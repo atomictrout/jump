@@ -1,0 +1,46 @@
+name: Jump
+options:
+  bundleIdPrefix: com.jump
+  deploymentTarget:
+    iOS: "17.0"
+  xcodeVersion: "15.0"
+  generateEmptyDirectories: false
+
+settings:
+  base:
+    SWIFT_VERSION: "5"
+    TARGETED_DEVICE_FAMILY: "1,2"
+
+targets:
+  Jump:
+    type: application
+    platform: iOS
+    sources:
+      - path: Jump
+        excludes:
+          - "**/.DS_Store"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jump.Jump
+        INFOPLIST_GENERATION_MODE: GeneratedFile
+        INFOPLIST_KEY_NSCameraUsageDescription: "Jump needs access to your camera to record videos for analysis."
+        INFOPLIST_KEY_NSPhotoLibraryUsageDescription: "Jump needs access to your photo library to import videos for analysis."
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: "Jump needs access to your microphone to record audio with video."
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: true
+        INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: true
+        INFOPLIST_KEY_UILaunchScreen_Generation: true
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        GENERATE_INFOPLIST_FILE: true
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        SWIFT_EMIT_LOC_STRINGS: true
+        CODE_SIGN_STYLE: Automatic
+    dependencies:
+      - sdk: Vision.framework
+      - sdk: AVFoundation.framework
+      - sdk: CoreImage.framework
+      - sdk: Photos.framework
+      - sdk: PhotosUI.framework
