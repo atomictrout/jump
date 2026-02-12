@@ -54,6 +54,32 @@ extension Color {
     static let barLine = Color(red: 1.0, green: 0.2, blue: 0.4)
 }
 
+// MARK: - ShapeStyle Conformance
+// Allows using .jumpAccent, .jumpSubtle, etc. in .foregroundStyle(), .fill(), .stroke()
+
+extension ShapeStyle where Self == Color {
+    static var jumpAccent: Color { Color.jumpAccent }
+    static var jumpSecondary: Color { Color.jumpSecondary }
+    static var jumpBackgroundTop: Color { Color.jumpBackgroundTop }
+    static var jumpBackgroundBottom: Color { Color.jumpBackgroundBottom }
+    static var jumpCard: Color { Color.jumpCard }
+    static var jumpSubtle: Color { Color.jumpSubtle }
+    static var skeletonLegs: Color { Color.skeletonLegs }
+    static var skeletonArms: Color { Color.skeletonArms }
+    static var skeletonTorso: Color { Color.skeletonTorso }
+    static var skeletonHead: Color { Color.skeletonHead }
+    static var skeletonJoint: Color { Color.skeletonJoint }
+    static var severityMinor: Color { Color.severityMinor }
+    static var severityModerate: Color { Color.severityModerate }
+    static var severityMajor: Color { Color.severityMajor }
+    static var phaseApproach: Color { Color.phaseApproach }
+    static var phasePenultimate: Color { Color.phasePenultimate }
+    static var phaseTakeoff: Color { Color.phaseTakeoff }
+    static var phaseFlight: Color { Color.phaseFlight }
+    static var phaseLanding: Color { Color.phaseLanding }
+    static var barLine: Color { Color.barLine }
+}
+
 // MARK: - View Modifiers
 
 struct JumpCardStyle: ViewModifier {
