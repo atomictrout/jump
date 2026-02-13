@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		099A36EDAC2DE3ACF73A21DD /* PersonTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32232DCE663E3DF7F4B3A8E2 /* PersonTracker.swift */; };
 		0ED5E801B827999CAF25287F /* PoseDetectionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90564933FCAEF85EF27EA00E /* PoseDetectionService.swift */; };
 		20F5653F1D435EE891A3C05A /* BodyPose.swift in Sources */ = {isa = PBXBuildFile; fileRef = 577DF8AE2B9EEF6C0EE53C93 /* BodyPose.swift */; };
 		2384AA3C743DDF53603570A2 /* VideoAnalysisView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61016581F1A5DB157E8818AE /* VideoAnalysisView.swift */; };
@@ -20,6 +21,7 @@
 		78A8E41B3DDE0268FF017FF6 /* VideoFrameExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EEA33FED5650B09D52AE390 /* VideoFrameExtractor.swift */; };
 		7D06BB231726B5F14A801371 /* FrameScrubberView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 811C91AB1A5E53AAC1BFC47E /* FrameScrubberView.swift */; };
 		7E0F8CCCFB534670F67E815A /* CameraRecorderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E04AEFD34F8744A60FE23D32 /* CameraRecorderView.swift */; };
+		87E4AF559E34D0E9109480DA /* BarHeightParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97EB474C4E65A9EAA49E8218 /* BarHeightParser.swift */; };
 		8B7B3E57176C25FA57D7CE10 /* Photos.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F4C712185EEAF9DF3749CE59 /* Photos.framework */; };
 		8C4721BF565CCD26ACE2DB41 /* Vision.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E7841E55E302CF0A3A96933A /* Vision.framework */; };
 		9192F1021C162EA49E2EEF2F /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4F925A68C1A118D2B1FA29BD /* AVFoundation.framework */; };
@@ -49,6 +51,7 @@
 		1358049242359C8651669767 /* CGPoint+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "CGPoint+Extensions.swift"; sourceTree = "<group>"; };
 		1E4E404A5CF8554522B535AD /* BarDetectionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarDetectionService.swift; sourceTree = "<group>"; };
 		31B88A3D36BC33991BEF0B06 /* BarDetectionResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarDetectionResult.swift; sourceTree = "<group>"; };
+		32232DCE663E3DF7F4B3A8E2 /* PersonTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonTracker.swift; sourceTree = "<group>"; };
 		3C4BEDDF4EC4837A0BB8917E /* JumpApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JumpApp.swift; sourceTree = "<group>"; };
 		3CF4D324A6AAD96855199295 /* AnalysisResultsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisResultsView.swift; sourceTree = "<group>"; };
 		48D73A8AC057DCF1A4E8F6D8 /* VideoImportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoImportView.swift; sourceTree = "<group>"; };
@@ -66,6 +69,7 @@
 		8DB17A5F6183D7511950447A /* Jump.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Jump.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		8F38AFE3E61955ADEAF262DA /* AnalysisEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisEngine.swift; sourceTree = "<group>"; };
 		90564933FCAEF85EF27EA00E /* PoseDetectionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PoseDetectionService.swift; sourceTree = "<group>"; };
+		97EB474C4E65A9EAA49E8218 /* BarHeightParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarHeightParser.swift; sourceTree = "<group>"; };
 		9EEA33FED5650B09D52AE390 /* VideoFrameExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoFrameExtractor.swift; sourceTree = "<group>"; };
 		AA02142AE8C54C90092467BF /* VideoImportViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoImportViewModel.swift; sourceTree = "<group>"; };
 		AD1995E3DC811E6A0263A4D9 /* VideoPlayerViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoPlayerViewModel.swift; sourceTree = "<group>"; };
@@ -101,6 +105,7 @@
 			isa = PBXGroup;
 			children = (
 				08A2E3BC988D7AF0CB587C3B /* AngleCalculator.swift */,
+				97EB474C4E65A9EAA49E8218 /* BarHeightParser.swift */,
 				1358049242359C8651669767 /* CGPoint+Extensions.swift */,
 				07ED526768C9A1A7BE9BC268 /* Color+Theme.swift */,
 				D26FAD4EBBF94ACB81E85D34 /* CoordinateConverter.swift */,
@@ -125,6 +130,7 @@
 			children = (
 				8F38AFE3E61955ADEAF262DA /* AnalysisEngine.swift */,
 				1E4E404A5CF8554522B535AD /* BarDetectionService.swift */,
+				32232DCE663E3DF7F4B3A8E2 /* PersonTracker.swift */,
 				90564933FCAEF85EF27EA00E /* PoseDetectionService.swift */,
 				7E2352F47A2B2FD8069895BC /* ThumbnailGenerator.swift */,
 				9EEA33FED5650B09D52AE390 /* VideoFrameExtractor.swift */,
@@ -289,6 +295,7 @@
 				AFAAB57FE8FD78ED486D4673 /* AngleCalculator.swift in Sources */,
 				CAFA71C7188C9963F9D60B40 /* BarDetectionResult.swift in Sources */,
 				A993C6ADEC7F6B4A506AF099 /* BarDetectionService.swift in Sources */,
+				87E4AF559E34D0E9109480DA /* BarHeightParser.swift in Sources */,
 				20F5653F1D435EE891A3C05A /* BodyPose.swift in Sources */,
 				4F52B3EBF981A0B9A6AE8D39 /* CGPoint+Extensions.swift in Sources */,
 				7E0F8CCCFB534670F67E815A /* CameraRecorderView.swift in Sources */,
@@ -300,6 +307,7 @@
 				D67C42F01F1D43B6AD2A6F57 /* JumpApp.swift in Sources */,
 				CA9A9E91E72EE3D1696CF0C8 /* JumpPhase.swift in Sources */,
 				EE15BF65404A7EA7CE8E0EEF /* JumpSession.swift in Sources */,
+				099A36EDAC2DE3ACF73A21DD /* PersonTracker.swift in Sources */,
 				0ED5E801B827999CAF25287F /* PoseDetectionService.swift in Sources */,
 				AAAA79A42AC7796043F6CADE /* PoseDetectionViewModel.swift in Sources */,
 				52E9E3496879453CD89CEFA0 /* SkeletonOverlayView.swift in Sources */,

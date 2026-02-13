@@ -9,6 +9,8 @@ struct JumpSession: Identifiable, Sendable {
     var frameRate: Double
     var totalFrames: Int
     var naturalSize: CGSize
+    var barHeightMeters: Double?    // known real bar height set by user
+    var videoCaption: String?       // raw caption extracted from video metadata
 
     init(
         id: UUID = UUID(),
@@ -17,7 +19,9 @@ struct JumpSession: Identifiable, Sendable {
         duration: Double = 0,
         frameRate: Double = 30,
         totalFrames: Int = 0,
-        naturalSize: CGSize = .zero
+        naturalSize: CGSize = .zero,
+        barHeightMeters: Double? = nil,
+        videoCaption: String? = nil
     ) {
         self.id = id
         self.videoURL = videoURL
@@ -26,9 +30,11 @@ struct JumpSession: Identifiable, Sendable {
         self.frameRate = frameRate
         self.totalFrames = totalFrames
         self.naturalSize = naturalSize
+        self.barHeightMeters = barHeightMeters
+        self.videoCaption = videoCaption
     }
 
-    /// Load video metadata from the asset
+    /// Load video metadata from the asset, including any caption/description
     static func create(from url: URL) async throws -> JumpSession {
         let asset = AVAsset(url: url)
         let duration = try await asset.load(.duration).seconds
@@ -41,12 +47,29 @@ struct JumpSession: Identifiable, Sendable {
         let naturalSize = try await videoTrack.load(.naturalSize)
         let totalFrames = Int(duration * frameRate)
 
+        // Try to extract caption from video metadata
+        var caption: String?
+        let metadata = try? await asset.load(.commonMetadata)
+        if let metadata {
+            // Check for title or description in common metadata
+            for item in metadata {
+                let key = item.commonKey
+                if key == .commonKeyTitle || key == .commonKeyDescription {
+                    if let stringValue = try? await item.load(.stringValue), !stringValue.isEmpty {
+                        caption = stringValue
+                        break
+                    }
+                }
+            }
+        }
+
         return JumpSession(
             videoURL: url,
             duration: duration,
             frameRate: frameRate,
             totalFrames: totalFrames,
-            naturalSize: naturalSize
+            naturalSize: naturalSize,
+            videoCaption: caption
         )
     }
 }

@@ -8,6 +8,7 @@ struct AnalysisEngine {
     static func analyze(
         poses: [BodyPose],
         bar: BarDetectionResult?,
+        barHeightMeters: Double? = nil,
         frameRate: Double
     ) -> AnalysisResult {
         guard !poses.isEmpty else {
@@ -45,14 +46,26 @@ struct AnalysisEngine {
         )
 
         // 4. Compute measurements
-        let measurements = computeMeasurements(
+        var measurements = computeMeasurements(
             poses: smoothedPoses,
             takeoffFrame: takeoffFrame,
+            landingFrame: landingFrame,
             penultimateFrame: penultimateFrame,
             peakFrame: peakFrame,
             bar: bar,
             frameRate: frameRate
         )
+
+        // 4b. Compute real-world measurements if bar height is known
+        if let barHeightMeters, let bar {
+            computeRealWorldMeasurements(
+                measurements: &measurements,
+                poses: smoothedPoses,
+                takeoffFrame: takeoffFrame,
+                bar: bar,
+                barHeightMeters: barHeightMeters
+            )
+        }
 
         // 5. Detect errors
         let errors = detectErrors(
@@ -312,6 +325,7 @@ struct AnalysisEngine {
     private static func computeMeasurements(
         poses: [BodyPose],
         takeoffFrame: Int,
+        landingFrame: Int,
         penultimateFrame: Int,
         peakFrame: Int,
         bar: BarDetectionResult?,
@@ -411,6 +425,139 @@ struct AnalysisEngine {
         // Peak height (normalized)
         if let peakRoot = peakPose?.joints[.root]?.point.y {
             m.peakHeight = Double(peakRoot)
+        }
+
+        // Jump rise: how much the root Y increased from takeoff to peak
+        if let takeoffRoot = takeoffPose?.joints[.root]?.point.y,
+           let peakRoot = peakPose?.joints[.root]?.point.y {
+            m.jumpRise = Double(peakRoot - takeoffRoot)
+        }
+
+        // Peak clearance over bar
+        // Compare the athlete's highest point (peak of root/neck/nose at peak frame)
+        // to the bar Y position. Both in Vision normalized coords.
+        if let bar = bar, let peakPose = peakPose {
+            // Use the highest joint at peak frame for clearance calculation
+            let candidateJoints: [BodyPose.JointName] = [.root, .neck, .nose, .leftHip, .rightHip]
+            var maxY: CGFloat = 0
+            for jointName in candidateJoints {
+                if let y = peakPose.joints[jointName]?.point.y, y > maxY {
+                    maxY = y
+                }
+            }
+            // barY is in Vision coords (higher Y = higher position)
+            let barY = bar.barY
+            m.peakClearanceOverBar = Double(maxY - barY)
+        }
+
+        // ──────────────────────────────────────────────────
+        // Bar knock detection
+        // Check if any body part crosses through the bar plane during flight
+        // ──────────────────────────────────────────────────
+        if let bar = bar {
+            let barY = bar.barY
+            let barXMin = min(bar.barLineStart.x, bar.barLineEnd.x)
+            let barXMax = max(bar.barLineStart.x, bar.barLineEnd.x)
+            let barYTolerance: CGFloat = 0.015  // ~1.5% of frame height
+
+            // Check joints that commonly knock the bar
+            let knockJoints: [(BodyPose.JointName, String)] = [
+                (.root, "hips"), (.leftHip, "hips"), (.rightHip, "hips"),
+                (.leftKnee, "trail leg"), (.rightKnee, "trail leg"),
+                (.leftAnkle, "trail leg"), (.rightAnkle, "trail leg"),
+                (.leftShoulder, "shoulders"), (.rightShoulder, "shoulders"),
+                (.leftElbow, "arms"), (.rightElbow, "arms"),
+            ]
+
+            let flightStart = takeoffFrame + 2
+            let flightEnd = min(poses.count - 1, landingFrame)
+
+            for i in flightStart...flightEnd {
+                let pose = poses[i]
+                for (jointName, partName) in knockJoints {
+                    guard let joint = pose.joints[jointName],
+                          joint.confidence > 0.2 else { continue }
+
+                    let jx = joint.point.x
+                    let jy = joint.point.y
+
+                    // Joint must be horizontally within the bar span
+                    guard jx >= barXMin - 0.05 && jx <= barXMax + 0.05 else { continue }
+
+                    // Joint must be within tolerance of bar Y (crossing the bar plane)
+                    if abs(jy - barY) < barYTolerance {
+                        m.barKnocked = true
+                        m.barKnockFrame = i
+                        m.barKnockBodyPart = partName
+                        break
+                    }
+                }
+                if m.barKnocked { break }
+            }
+
+            // Takeoff distance from bar (horizontal distance from root at takeoff to bar center X)
+            if let takeoffRoot = takeoffPose?.joints[.root]?.point {
+                let barCenterX = (bar.barLineStart.x + bar.barLineEnd.x) / 2.0
+                m.takeoffDistance = Double(abs(takeoffRoot.x - barCenterX))
+            }
+        }
+
+        // Set jump success/fail based on bar knock detection
+        if bar != nil {
+            m.jumpSuccess = !m.barKnocked
+        }
+
+        // ──────────────────────────────────────────────────
+        // Flight time
+        // ──────────────────────────────────────────────────
+        let flightFrames = landingFrame - takeoffFrame
+        if flightFrames > 0 {
+            m.flightTime = Double(flightFrames) / frameRate
+        }
+
+        // ──────────────────────────────────────────────────
+        // Approach speed (average root displacement per frame in last 15 approach frames)
+        // ──────────────────────────────────────────────────
+        let speedStart = max(0, takeoffFrame - 15)
+        let speedEnd = max(speedStart + 1, takeoffFrame - 1)
+        if speedEnd > speedStart {
+            var totalDisplacement: Double = 0
+            var count = 0
+            for i in speedStart..<speedEnd {
+                guard let p1 = poses[i].joints[.root]?.point,
+                      let p2 = poses[i + 1].joints[.root]?.point else { continue }
+                let dx = Double(p2.x - p1.x)
+                let dy = Double(p2.y - p1.y)
+                totalDisplacement += sqrt(dx * dx + dy * dy)
+                count += 1
+            }
+            if count > 0 {
+                m.approachSpeed = totalDisplacement / Double(count)
+            }
+        }
+
+        // ──────────────────────────────────────────────────
+        // Takeoff vertical velocity (root Y velocity at takeoff, units/frame)
+        // ──────────────────────────────────────────────────
+        if takeoffFrame + 2 < poses.count {
+            if let y0 = poses[takeoffFrame].joints[.root]?.point.y,
+               let y2 = poses[min(takeoffFrame + 2, poses.count - 1)].joints[.root]?.point.y {
+                m.takeoffVerticalVelocity = Double(y2 - y0) / 2.0
+            }
+        }
+
+        // ──────────────────────────────────────────────────
+        // J-Curve radius estimation
+        // Fit circle to last 8 root positions before takeoff
+        // ──────────────────────────────────────────────────
+        let curveStart = max(0, takeoffFrame - 8)
+        if takeoffFrame - curveStart >= 4 {
+            let curvePoints = (curveStart..<takeoffFrame).compactMap { i -> CGPoint? in
+                poses.indices.contains(i) ? poses[i].joints[.root]?.point : nil
+            }
+            if curvePoints.count >= 4 {
+                m.jCurveRadius = estimateCurveRadius(points: curvePoints)
+            }
         }
 
         return m
@@ -567,6 +714,18 @@ struct AnalysisEngine {
             }
         }
 
+        // 8. Bar knock detection
+        if measurements.barKnocked, let knockFrame = measurements.barKnockFrame {
+            let partName = measurements.barKnockBodyPart ?? "body"
+            errors.append(DetectedError(
+                id: UUID(),
+                type: .barKnock,
+                frameRange: knockFrame...min(knockFrame + 3, poses.count - 1),
+                severity: .major,
+                description: "Bar knocked by \(partName) at frame \(knockFrame + 1). The \(partName) passed through the bar plane during clearance."
+            ))
+        }
+
         return errors.sorted { $0.severity > $1.severity }
     }
 
@@ -650,6 +809,108 @@ struct AnalysisEngine {
                 "Keep Your Eyes Up Longer",
                 "You're dropping your chin too early, which pulls your hips down before they clear the bar. Keep your eyes looking up and your chin level until you feel your hips pass the bar. Then tuck your chin to lift your legs clear."
             )
+        case .barKnock:
+            return (
+                "Bar Contact Detected",
+                "A body part crossed the bar plane during clearance. Review the indicated frame to identify which phase needs improvement. Common causes: insufficient peak height (more explosive takeoff needed), poor arch timing (hips or trail leg catching the bar), or taking off too close/far from the bar."
+            )
+        }
+    }
+
+    // MARK: - Geometry Helpers
+
+    /// Estimate the radius of curvature from a series of points using Menger curvature.
+    /// Returns average radius in normalized coordinates.
+    private static func estimateCurveRadius(points: [CGPoint]) -> Double {
+        guard points.count >= 3 else { return 0 }
+
+        var radii: [Double] = []
+
+        // Sample triplets to estimate curvature
+        let step = max(1, points.count / 4)
+        for i in stride(from: 0, to: points.count - 2 * step, by: step) {
+            let a = points[i]
+            let b = points[i + step]
+            let c = points[min(i + 2 * step, points.count - 1)]
+
+            // Menger curvature: 4 * area(triangle) / (|AB| * |BC| * |CA|)
+            let area = abs(Double(
+                (b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y)
+            )) / 2.0
+
+            let ab = sqrt(pow(Double(b.x - a.x), 2) + pow(Double(b.y - a.y), 2))
+            let bc = sqrt(pow(Double(c.x - b.x), 2) + pow(Double(c.y - b.y), 2))
+            let ca = sqrt(pow(Double(a.x - c.x), 2) + pow(Double(a.y - c.y), 2))
+
+            let denom = ab * bc * ca
+            guard denom > 0.0001 else { continue }
+
+            let curvature = 4.0 * area / denom
+            if curvature > 0.001 {
+                radii.append(1.0 / curvature)
+            }
+        }
+
+        guard !radii.isEmpty else { return 0 }
+        return radii.reduce(0, +) / Double(radii.count)
+    }
+
+    // MARK: - Real-World Measurements
+
+    /// Convert normalized measurements to real-world units using bar height as reference.
+    ///
+    /// The approach: the bar Y in normalized Vision coords represents `barHeightMeters` above ground.
+    /// Ground level is estimated as the lowest ankle Y during the approach phase.
+    /// Scale factor = barHeightMeters / (barY - groundY)
+    private static func computeRealWorldMeasurements(
+        measurements: inout JumpMeasurements,
+        poses: [BodyPose],
+        takeoffFrame: Int,
+        bar: BarDetectionResult,
+        barHeightMeters: Double
+    ) {
+        measurements.barHeightMeters = barHeightMeters
+
+        // Estimate ground level: lowest ankle Y position during approach
+        // (In Vision coords, lower Y = closer to ground)
+        var groundY: CGFloat = 1.0  // start high
+        let approachEnd = min(takeoffFrame, poses.count - 1)
+        let approachStart = max(0, approachEnd - 30)  // look at last 30 approach frames
+
+        for i in approachStart...approachEnd {
+            let pose = poses[i]
+            for ankleJoint in [BodyPose.JointName.leftAnkle, .rightAnkle] {
+                if let ankle = pose.joints[ankleJoint],
+                   ankle.confidence > 0.2,
+                   ankle.point.y < groundY {
+                    groundY = ankle.point.y
+                }
+            }
+        }
+
+        let barY = bar.barY
+        let normalizedBarToGround = barY - groundY
+
+        // Need a meaningful scale — bar must be visibly above ground level
+        guard normalizedBarToGround > 0.05 else { return }
+
+        let scale = barHeightMeters / Double(normalizedBarToGround)
+        measurements.metersPerNormalizedUnit = scale
+
+        // Convert jump rise to meters
+        if let jumpRise = measurements.jumpRise {
+            measurements.jumpRiseMeters = jumpRise * scale
+        }
+
+        // Convert peak clearance to meters
+        if let clearance = measurements.peakClearanceOverBar {
+            measurements.peakClearanceMeters = clearance * scale
+        }
+
+        // Convert peak height to real height above ground
+        if let peakHeight = measurements.peakHeight {
+            let normalizedAboveGround = Double(peakHeight) - Double(groundY)
+            measurements.peakHeightMeters = normalizedAboveGround * scale
         }
     }
 }

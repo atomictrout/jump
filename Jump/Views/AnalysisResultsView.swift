@@ -12,6 +12,12 @@ struct AnalysisResultsView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 24) {
+                    // Jump Result Banner (Success / Fail)
+                    if let success = result.measurements.jumpSuccess {
+                        jumpResultBanner(success: success)
+                            .padding(.horizontal)
+                    }
+
                     // Phase Timeline
                     phaseTimeline
                         .padding(.horizontal)
@@ -19,6 +25,20 @@ struct AnalysisResultsView: View {
                     // Measurements
                     measurementsSection
                         .padding(.horizontal)
+
+                    // Jump Height & Bar Status
+                    let heights = analysisVM.heightDisplays(from: result.measurements)
+                    if !heights.isEmpty {
+                        heightSection(heights: heights)
+                            .padding(.horizontal)
+                    }
+
+                    // Performance Metrics
+                    let performance = analysisVM.performanceDisplays(from: result.measurements)
+                    if !performance.isEmpty {
+                        performanceSection(metrics: performance)
+                            .padding(.horizontal)
+                    }
 
                     // Errors
                     if !result.errors.isEmpty {
@@ -146,6 +166,76 @@ struct AnalysisResultsView: View {
         .jumpCard()
     }
 
+    // MARK: - Jump Height
+
+    private func heightSection(heights: [AnalysisViewModel.HeightDisplay]) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Jump Height", systemImage: "arrow.up.circle")
+                .font(.headline)
+                .foregroundStyle(.white)
+
+            ForEach(heights) { height in
+                HStack {
+                    Image(systemName: height.icon)
+                        .foregroundStyle(height.color)
+                        .frame(width: 24)
+
+                    Text(height.name)
+                        .font(.subheadline)
+                        .foregroundStyle(.white)
+
+                    Spacer()
+
+                    Text(height.formattedValue)
+                        .font(.system(.subheadline, design: .monospaced).bold())
+                        .foregroundStyle(height.color)
+                }
+                .padding(.vertical, 4)
+
+                if height.id != heights.last?.id {
+                    Divider()
+                        .overlay(Color.jumpSubtle.opacity(0.3))
+                }
+            }
+        }
+        .jumpCard()
+    }
+
+    // MARK: - Performance Metrics
+
+    private func performanceSection(metrics: [AnalysisViewModel.PerformanceDisplay]) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Performance", systemImage: "gauge.with.dots.needle.67percent")
+                .font(.headline)
+                .foregroundStyle(.white)
+
+            ForEach(metrics) { metric in
+                HStack {
+                    Image(systemName: metric.icon)
+                        .foregroundStyle(metric.color)
+                        .frame(width: 24)
+
+                    Text(metric.name)
+                        .font(.subheadline)
+                        .foregroundStyle(.white)
+
+                    Spacer()
+
+                    Text(metric.formattedValue)
+                        .font(.system(.subheadline, design: .monospaced).bold())
+                        .foregroundStyle(metric.color)
+                }
+                .padding(.vertical, 4)
+
+                if metric.id != metrics.last?.id {
+                    Divider()
+                        .overlay(Color.jumpSubtle.opacity(0.3))
+                }
+            }
+        }
+        .jumpCard()
+    }
+
     // MARK: - Errors
 
     private var errorsSection: some View {
@@ -197,6 +287,30 @@ struct AnalysisResultsView: View {
             }
         }
         .jumpCard()
+    }
+
+    // MARK: - Jump Result Banner
+
+    private func jumpResultBanner(success: Bool) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: success ? "checkmark.circle.fill" : "xmark.circle.fill")
+                .font(.title)
+                .foregroundStyle(success ? .green : .red)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(success ? "CLEARED" : "KNOCKED")
+                    .font(.headline.bold())
+                    .foregroundStyle(success ? .green : .red)
+                Text(success ? "Bar stayed up — successful jump!" : "Bar was knocked — review technique below")
+                    .font(.caption)
+                    .foregroundStyle(.jumpSubtle)
+            }
+
+            Spacer()
+        }
+        .padding()
+        .background((success ? Color.green : Color.red).opacity(0.12))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     // MARK: - Recommendations

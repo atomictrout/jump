@@ -136,13 +136,13 @@ struct SkeletonOverlayView: View {
             )
         )
 
-        // Bar endpoint dots
+        // Bar endpoint dots (small)
         for point in [startPoint, endPoint] {
             let dotRect = CGRect(
-                x: point.x - 5,
-                y: point.y - 5,
-                width: 10,
-                height: 10
+                x: point.x - 3,
+                y: point.y - 3,
+                width: 6,
+                height: 6
             )
             context.fill(
                 Path(ellipseIn: dotRect),

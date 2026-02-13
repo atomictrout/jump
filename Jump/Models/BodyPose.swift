@@ -106,6 +106,26 @@ struct BodyPose: Sendable {
         return AngleCalculator.angle(pointA: pointA, vertex: pointV, pointC: pointB)
     }
 
+    /// Bounding box of all detected joints (normalized Vision coords, origin bottom-left)
+    var boundingBox: CGRect? {
+        let validJoints = joints.values.filter { $0.confidence > 0.1 }
+        guard validJoints.count >= 3 else { return nil }
+
+        var minX: CGFloat = 1.0
+        var maxX: CGFloat = 0.0
+        var minY: CGFloat = 1.0
+        var maxY: CGFloat = 0.0
+
+        for joint in validJoints {
+            minX = min(minX, joint.point.x)
+            maxX = max(maxX, joint.point.x)
+            minY = min(minY, joint.point.y)
+            maxY = max(maxY, joint.point.y)
+        }
+
+        return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+    }
+
     /// Get the center of mass approximation (midpoint of hips, or root)
     var centerOfMass: CGPoint? {
         if let root = joints[.root]?.point {

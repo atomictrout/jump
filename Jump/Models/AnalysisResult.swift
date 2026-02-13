@@ -34,6 +34,28 @@ struct JumpMeasurements: Sendable {
     var estimatedGroundContactTime: Double?  // seconds
     var approachCurveRadius: Double?         // relative units
     var peakHeight: Double?                  // normalized units
+    var peakClearanceOverBar: Double?        // normalized units (positive = above bar)
+    var jumpRise: Double?                    // normalized units (peak root Y - takeoff root Y)
+
+    // Bar tracking
+    var barKnocked: Bool = false             // true if a body part crossed bar plane during flight
+    var barKnockFrame: Int?                  // frame where the knock was detected
+    var barKnockBodyPart: String?            // which body part knocked it (e.g. "hips", "trail leg")
+    var jumpSuccess: Bool?                   // true = cleared, false = knocked, nil = no bar data
+
+    // Additional metrics
+    var flightTime: Double?                  // seconds (takeoff to landing)
+    var approachSpeed: Double?               // normalized units/frame (average root displacement in approach)
+    var takeoffVerticalVelocity: Double?     // normalized units/frame (root Y velocity at takeoff)
+    var jCurveRadius: Double?                // estimated J-curve radius (normalized)
+    var takeoffDistance: Double?             // horizontal distance from bar at takeoff (normalized)
+
+    // Real-world measurements (when bar height is known)
+    var barHeightMeters: Double?             // echoed from user input for display
+    var jumpRiseMeters: Double?              // real jump rise in meters
+    var peakClearanceMeters: Double?         // real clearance over bar in meters (+/-)
+    var peakHeightMeters: Double?            // real peak height from ground in meters
+    var metersPerNormalizedUnit: Double?     // scale factor used for conversions
 
     /// Check if a measurement is within the ideal range
     static func isIdeal(_ value: Double, idealRange: ClosedRange<Double>) -> MeasurementStatus {
@@ -91,6 +113,7 @@ struct DetectedError: Identifiable, Sendable {
         case hipCollapse = "Hip Collapse"
         case insufficientRotation = "Insufficient Rotation"
         case earlyHeadDrop = "Early Head/Chin Drop"
+        case barKnock = "Bar Knocked"
     }
 
     enum Severity: Int, Sendable, Comparable {
@@ -149,6 +172,8 @@ struct Recommendation: Identifiable, Sendable {
             return "arrow.triangle.2.circlepath"
         case .earlyHeadDrop:
             return "eye.fill"
+        case .barKnock:
+            return "xmark.circle"
         case nil:
             return "lightbulb.fill"
         }

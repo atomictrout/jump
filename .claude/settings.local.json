@@ -7,7 +7,17 @@
       "Bash(brew install:*)",
       "Bash(/Users/adamklein/Development/jump/project.yml << 'YAMLEOF'\nname: Jump\noptions:\n  bundleIdPrefix: com.jump\n  deploymentTarget:\n    iOS: \"17.0\"\n  xcodeVersion: \"15.0\"\n  generateEmptyDirectories: false\n\nsettings:\n  base:\n    SWIFT_VERSION: \"5\"\n    TARGETED_DEVICE_FAMILY: \"1,2\"\n\ntargets:\n  Jump:\n    type: application\n    platform: iOS\n    sources:\n      - path: Jump\n        excludes:\n          - \"**/.DS_Store\"\n    settings:\n      base:\n        PRODUCT_BUNDLE_IDENTIFIER: com.jump.Jump\n        INFOPLIST_GENERATION_MODE: GeneratedFile\n        INFOPLIST_KEY_NSCameraUsageDescription: \"Jump needs access to your camera to record videos for analysis.\"\n        INFOPLIST_KEY_NSPhotoLibraryUsageDescription: \"Jump needs access to your photo library to import videos for analysis.\"\n        INFOPLIST_KEY_NSMicrophoneUsageDescription: \"Jump needs access to your microphone to record audio with video.\"\n        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: true\n        INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: true\n        INFOPLIST_KEY_UILaunchScreen_Generation: true\n        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: \"UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight\"\n        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: \"UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight\"\n        MARKETING_VERSION: \"1.0\"\n        CURRENT_PROJECT_VERSION: \"1\"\n        GENERATE_INFOPLIST_FILE: true\n        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon\n        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor\n        SWIFT_EMIT_LOC_STRINGS: true\n        CODE_SIGN_STYLE: Automatic\n    dependencies:\n      - sdk: Vision.framework\n      - sdk: AVFoundation.framework\n      - sdk: CoreImage.framework\n      - sdk: Photos.framework\n      - sdk: PhotosUI.framework\nYAMLEOF)",
       "Bash(xcodegen generate:*)",
-      "Bash(sudo xcode-select:*)"
+      "Bash(sudo xcode-select:*)",
+      "Bash(git -C /Users/adamklein/Development/jump remote:*)",
+      "Bash(git -C /Users/adamklein/Development/jump log --oneline -5)",
+      "Bash(git -C /Users/adamklein/Development/jump status)",
+      "Bash(git -C /Users/adamklein/Development/jump diff)",
+      "Bash(git -C /Users/adamklein/Development/jump add Jump/Utilities/Color+Theme.swift)",
+      "Bash(git -C /Users/adamklein/Development/jump commit -m \"$\\(cat <<''EOF''\nFix ShapeStyle compile error for custom theme colors\n\nAdd ShapeStyle extension so custom colors \\(.jumpSubtle, .jumpAccent, etc.\\)\nare discoverable in .foregroundStyle\\(\\), .fill\\(\\), and .stroke\\(\\) contexts.\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git -C /Users/adamklein/Development/jump push origin main)",
+      "Bash(gh auth status:*)",
+      "Bash(swift generate_icon.swift:*)",
+      "Bash(swift:*)"
     ]
   }
 }

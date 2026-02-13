@@ -60,16 +60,21 @@ struct VideoFrameExtractor {
         let totalFrames = Int(duration * frameRate)
 
         while let sampleBuffer = readerOutput.copyNextSampleBuffer() {
+            // Process frame inside autoreleasepool to manage ObjC temporaries
             try autoreleasepool {
                 guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
                 let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer).seconds
-
                 try onFrame(frameIndex, pixelBuffer, timestamp)
+            }
 
-                frameIndex += 1
-                if totalFrames > 0 {
-                    onProgress(Double(frameIndex) / Double(totalFrames))
-                }
+            frameIndex += 1
+            if totalFrames > 0 {
+                onProgress(Double(frameIndex) / Double(totalFrames))
+            }
+
+            // Yield periodically so progress updates and UI can process
+            if frameIndex % 10 == 0 {
+                await Task.yield()
             }
         }
 

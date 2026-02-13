@@ -19,15 +19,12 @@ struct HomeView: View {
 
                 // App logo / title
                 VStack(spacing: 16) {
-                    Image(systemName: "figure.track.and.field")
-                        .font(.system(size: 72, weight: .thin))
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [.jumpAccent, .jumpSecondary],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
+                    Image("HighJumpIcon")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 120, height: 120)
+                        .clipShape(RoundedRectangle(cornerRadius: 24))
+                        .shadow(color: .jumpAccent.opacity(0.3), radius: 16)
 
                     Text("Jump")
                         .font(.system(size: 44, weight: .bold, design: .rounded))

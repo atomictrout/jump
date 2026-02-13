@@ -89,7 +89,7 @@ struct FrameScrubberView: View {
                 .frame(width: 12, height: 12)
                 .offset(y: -(size.height / 2 + 2))
         }
-        .offset(x: offset - size.width / 2)
+        .offset(x: offset)
         .animation(isDragging ? nil : .easeOut(duration: 0.1), value: viewModel.currentFrameIndex)
     }
 
