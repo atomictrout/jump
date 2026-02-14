@@ -26,9 +26,35 @@ class PoseDetectionViewModel {
     /// Person tracker — keeps skeleton locked on the same athlete
     let personTracker = PersonTracker()
 
+    /// Detected takeoff frame index (when the athlete leaves the ground).
+    /// Computed from pose data after person is selected. nil if not enough data.
+    var takeoffFrameIndex: Int?
+
+    /// Frame indices where tracking confidence is low and user should review.
+    /// Sorted by frame index. Empty when no uncertain frames or user has reviewed all.
+    var uncertainFrameIndices: [Int] = []
+
+    /// Index into uncertainFrameIndices for the current "review needed" frame.
+    /// nil means no review is active.
+    var currentUncertainReviewIndex: Int?
+
+    /// Whether we should auto-navigate to the first uncertain frame after retrack
+    var shouldNavigateToUncertain = false
+
     /// Stored raw observations from the initial detection pass.
     /// Used for instant re-tracking when the user selects a different person.
     private var storedObservations: [FrameObservations] = []
+    
+    /// Public accessor for stored observations (for multi-person selection UI)
+    var allFrameObservations: [FrameObservations] {
+        storedObservations
+    }
+    
+    // MARK: - Smart Tracking
+    
+    var autoTrackingResult: SmartTrackingEngine.TrackingResult?
+    var currentDecisionPointIndex: Int = 0
+    var correctionManager: TrackingCorrectionManager?
 
     @MainActor
     func processVideo(url: URL, session: JumpSession) async {
@@ -48,10 +74,19 @@ class PoseDetectionViewModel {
         storedObservations = []
         personConfirmed = false
         personAnnotations = []
+        uncertainFrameIndices = []
+        currentUncertainReviewIndex = nil
+        shouldNavigateToUncertain = false
+        takeoffFrameIndex = nil
         personTracker.reset()
+        
+        // Reset smart tracking state
+        autoTrackingResult = nil
+        currentDecisionPointIndex = 0
+        correctionManager = nil
 
         do {
-            // Collect all raw observations (all people per frame) on a background thread
+            // Collect all raw observations (all people per frame) on a background thread.
             let allObs = try await Task.detached(priority: .userInitiated) {
                 try await PoseDetectionService.collectAllObservations(
                     url: url,
@@ -63,16 +98,22 @@ class PoseDetectionViewModel {
                 }
             }.value
             storedObservations = allObs
-
-            // Initial tracking pass (forward from frame 0) using default auto-selection
-            let tracker = personTracker
-            let detectedPoses = await Task.detached(priority: .userInitiated) {
-                PoseDetectionService.retrackForward(
-                    allFrameObservations: allObs,
-                    tracker: tracker
-                )
-            }.value
-            poses = Self.interpolateMissingPoses(detectedPoses)
+            
+            // Run smart auto-tracking algorithm
+            let trackingResult = SmartTrackingEngine.autoTrack(
+                allFrameObservations: allObs
+            )
+            autoTrackingResult = trackingResult
+            
+            // Initialize correction manager
+            correctionManager = TrackingCorrectionManager()
+            correctionManager?.initialize(from: trackingResult)
+            
+            // Store poses from auto-tracking
+            poses = trackingResult.trackedPoses
+            
+            // Detect takeoff frame from tracked poses
+            takeoffFrameIndex = Self.detectTakeoffFrame(from: poses)
 
         } catch {
             errorMessage = "Pose detection failed: \(error.localizedDescription)"
@@ -84,44 +125,39 @@ class PoseDetectionViewModel {
 
     /// Add a person annotation at the given frame and re-track using all annotations.
     /// Multiple annotations improve tracking accuracy across the video.
+    /// Queues the annotation if a retrack is already in progress.
     @MainActor
     func addPersonAnnotation(at visionPoint: CGPoint, frameIndex: Int) {
-        guard !isProcessing, !storedObservations.isEmpty else { return }
+        guard !storedObservations.isEmpty else { return }
 
         // Replace any existing annotation at same frame, otherwise add
         personAnnotations.removeAll { $0.frame == frameIndex }
         personAnnotations.append((frame: frameIndex, point: visionPoint))
         personAnnotations.sort { $0.frame < $1.frame }
 
-        retrackFromAnnotations()
+        // If already retracking, queue a new retrack after the current one finishes
+        if isProcessing {
+            pendingRetrack = true
+        } else {
+            retrackFromAnnotations()
+        }
     }
 
-    /// Remove all person annotations and reset to auto-tracking
+    /// Whether a retrack should be triggered after the current one finishes
+    private var pendingRetrack = false
+
+    /// Remove all person annotations and clear all skeletons.
+    /// No skeleton is shown until the user selects a person again.
     @MainActor
     func clearPersonAnnotations() {
         personAnnotations = []
         personConfirmed = false
-
-        guard !storedObservations.isEmpty else { return }
-
-        // Re-run auto-tracking
-        isProcessing = true
-        let allObs = storedObservations
-        let tracker = PersonTracker()
-
-        Task.detached(priority: .userInitiated) { [weak self] in
-            let detectedPoses = PoseDetectionService.retrackForward(
-                allFrameObservations: allObs,
-                tracker: tracker
-            )
-            let interpolated = PoseDetectionViewModel.interpolateMissingPoses(detectedPoses)
-
-            await MainActor.run {
-                guard let self else { return }
-                self.poses = interpolated
-                self.isProcessing = false
-            }
-        }
+        poses = []
+        analysisResult = nil
+        uncertainFrameIndices = []
+        currentUncertainReviewIndex = nil
+        shouldNavigateToUncertain = false
+        takeoffFrameIndex = nil
     }
 
     /// Remove the most recent person annotation and re-track
@@ -136,6 +172,153 @@ class PoseDetectionViewModel {
             retrackFromAnnotations()
         }
     }
+    
+    // MARK: - Multi-Person Selection Support
+    
+    /// Get all detected poses for a specific frame (all people in frame)
+    func getAllPosesForFrame(_ frameIndex: Int) -> [BodyPose] {
+        guard frameIndex >= 0 && frameIndex < storedObservations.count else { return [] }
+        return storedObservations[frameIndex].observations
+    }
+    
+    /// Check if current frame has multiple people detected
+    func hasMultiplePeople(at frameIndex: Int) -> Bool {
+        return getAllPosesForFrame(frameIndex).count > 1
+    }
+    
+    /// Get currently tracked pose for a frame (if any)
+    func getTrackedPose(at frameIndex: Int) -> BodyPose? {
+        return poses.first { $0.frameIndex == frameIndex }
+    }
+    
+    /// Select a specific pose from multiple detections
+    /// This is called when user taps on a skeleton in multi-person view
+    @MainActor
+    func selectSpecificPose(_ selectedPose: BodyPose, at frameIndex: Int) {
+        // Find the centroid of the selected pose to use as annotation point
+        guard let bbox = selectedPose.boundingBox else { return }
+        let annotationPoint = CGPoint(x: bbox.midX, y: bbox.midY)
+        
+        // Add annotation at this frame with the selected person's position
+        addPersonAnnotation(at: annotationPoint, frameIndex: frameIndex)
+    }
+    
+    /// Mark a frame as having no athlete present
+    /// This is used when the athlete is off-camera, occluded, or not yet in frame
+    @MainActor
+    func markFrameAsNoAthlete(_ frameIndex: Int) {
+        // Add a special annotation point that's off-screen (negative coords)
+        // This signals "no athlete in this frame" to the tracker
+        let noAthleteMarker = CGPoint(x: -1.0, y: -1.0)
+        addPersonAnnotation(at: noAthleteMarker, frameIndex: frameIndex)
+    }
+    
+    /// Check if a frame is marked as "no athlete"
+    func isFrameMarkedNoAthlete(_ frameIndex: Int) -> Bool {
+        return personAnnotations.contains { annotation in
+            annotation.frame == frameIndex && 
+            annotation.point.x < 0 && annotation.point.y < 0
+        }
+    }
+    
+    // MARK: - Smart Tracking Decision Handling
+    
+    /// Handle user selection at a decision point
+    @MainActor
+    func handleDecisionSelection(_ selectedPerson: PersonThumbnailGenerator.DetectedPerson?, at frameIndex: Int) {
+        guard var result = autoTrackingResult else { return }
+        
+        if let person = selectedPerson {
+            // User selected a person - update tracking from this point
+            var newPoses = result.trackedPoses
+            newPoses[frameIndex] = person.pose
+            
+            // Re-track forward from this decision with the selected identity
+            let identity = SmartTrackingEngine.PersonIdentity(from: person.pose)
+            retrackFromFrame(frameIndex, identity: identity, in: &newPoses)
+            
+            // Update result
+            autoTrackingResult = SmartTrackingEngine.TrackingResult(
+                trackedPoses: newPoses,
+                decisionPoints: result.decisionPoints,
+                autoTrackedFrames: result.autoTrackedFrames
+            )
+            poses = newPoses
+            
+            // Mark as confirmed
+            correctionManager?.markFrameCorrect(frameIndex)
+        } else {
+            // User marked as "no athlete"
+            markFrameAsNoAthlete(frameIndex)
+        }
+        
+        // Update takeoff detection
+        takeoffFrameIndex = Self.detectTakeoffFrame(from: poses)
+    }
+    
+    /// Re-track from a specific frame forward with a known identity
+    private func retrackFromFrame(_ startFrame: Int, identity: SmartTrackingEngine.PersonIdentity, in poses: inout [BodyPose]) {
+        guard startFrame < storedObservations.count - 1 else { return }
+        
+        var lastPose = poses[startFrame]
+        
+        for i in (startFrame + 1)..<storedObservations.count {
+            let frame = storedObservations[i]
+            let observations = frame.observations
+            
+            if observations.isEmpty {
+                poses[i] = .empty(frameIndex: i, timestamp: frame.timestamp)
+                continue
+            }
+            
+            if observations.count == 1 {
+                // Single person - check if it matches identity
+                let pose = observations[0]
+                if SmartTrackingEngine.matchesPerson(pose, identity: identity, lastPose: lastPose) {
+                    poses[i] = pose
+                    lastPose = pose
+                } else {
+                    poses[i] = .empty(frameIndex: i, timestamp: frame.timestamp)
+                }
+                continue
+            }
+            
+            // Multiple people - find best match
+            let (bestMatch, confidence) = SmartTrackingEngine.findBestMatch(
+                among: observations,
+                identity: identity,
+                lastPose: lastPose
+            )
+            
+            if confidence > 0.75 {
+                poses[i] = bestMatch
+                lastPose = bestMatch
+            } else {
+                poses[i] = .empty(frameIndex: i, timestamp: frame.timestamp)
+            }
+        }
+    }
+    
+    /// Get next decision point that needs user input
+    func getNextDecisionPoint() -> SmartTrackingEngine.DecisionPoint? {
+        guard let result = autoTrackingResult else { return nil }
+        
+        if currentDecisionPointIndex < result.decisionPoints.count {
+            return result.decisionPoints[currentDecisionPointIndex]
+        }
+        return nil
+    }
+    
+    /// Move to next decision point
+    func advanceToNextDecision() {
+        currentDecisionPointIndex += 1
+    }
+    
+    /// Check if there are more decision points to handle
+    func hasMoreDecisionPoints() -> Bool {
+        guard let result = autoTrackingResult else { return false }
+        return currentDecisionPointIndex < result.decisionPoints.count
+    }
 
     /// Confirm person selection — enables bar marking step
     @MainActor
@@ -145,28 +328,45 @@ class PoseDetectionViewModel {
 
     /// Re-track using all current annotations.
     /// Segments the video at annotation points and tracks bidirectionally from each.
+    /// After retracking, flags uncertain frames for user review.
     @MainActor
     private func retrackFromAnnotations() {
         guard !isProcessing, !personAnnotations.isEmpty else { return }
 
         isProcessing = true
+        pendingRetrack = false
         analysisResult = nil
 
         let allObs = storedObservations
         let annotations = personAnnotations
 
         Task.detached(priority: .userInitiated) { [weak self] in
-            let detectedPoses = PoseDetectionService.retrackWithMultipleAnnotations(
+            let result = PoseDetectionService.retrackWithMultipleAnnotations(
                 allFrameObservations: allObs,
                 annotations: annotations
             )
-            let interpolated = PoseDetectionViewModel.interpolateMissingPoses(detectedPoses)
+            let interpolated = PoseDetectionViewModel.interpolateMissingPoses(result.poses)
 
             await MainActor.run {
                 guard let self else { return }
                 self.poses = interpolated
+                self.uncertainFrameIndices = result.uncertainFrameIndices
+                self.currentUncertainReviewIndex = nil
+                self.takeoffFrameIndex = Self.detectTakeoffFrame(from: interpolated)
                 self.isProcessing = false
                 self.showPersonSelected = true
+
+                // If uncertain frames were found, signal to navigate to first one
+                if !result.uncertainFrameIndices.isEmpty {
+                    self.shouldNavigateToUncertain = true
+                } else {
+                    self.shouldNavigateToUncertain = false
+                }
+
+                // If a new annotation came in while we were retracking, do it now
+                if self.pendingRetrack {
+                    self.retrackFromAnnotations()
+                }
 
                 Task { @MainActor [weak self] in
                     try? await Task.sleep(for: .seconds(1.5))
@@ -180,6 +380,51 @@ class PoseDetectionViewModel {
     @MainActor
     func selectPerson(at visionPoint: CGPoint, frameIndex: Int) {
         addPersonAnnotation(at: visionPoint, frameIndex: frameIndex)
+    }
+
+    /// Navigate to the next uncertain frame (returns the frame index to seek to, or nil)
+    @MainActor
+    func nextUncertainFrame() -> Int? {
+        guard !uncertainFrameIndices.isEmpty else { return nil }
+
+        if let current = currentUncertainReviewIndex {
+            let next = current + 1
+            if next < uncertainFrameIndices.count {
+                currentUncertainReviewIndex = next
+                return uncertainFrameIndices[next]
+            }
+            return nil  // No more uncertain frames
+        } else {
+            currentUncertainReviewIndex = 0
+            return uncertainFrameIndices[0]
+        }
+    }
+
+    /// Navigate to the previous uncertain frame
+    @MainActor
+    func previousUncertainFrame() -> Int? {
+        guard !uncertainFrameIndices.isEmpty,
+              let current = currentUncertainReviewIndex, current > 0 else { return nil }
+        currentUncertainReviewIndex = current - 1
+        return uncertainFrameIndices[current - 1]
+    }
+
+    /// Dismiss uncertain frame navigation (user is done reviewing)
+    @MainActor
+    func dismissUncertainReview() {
+        shouldNavigateToUncertain = false
+        currentUncertainReviewIndex = nil
+    }
+
+    /// Number of remaining uncertain frames the user hasn't reviewed
+    var uncertainFrameCount: Int {
+        uncertainFrameIndices.count
+    }
+
+    /// Current uncertain review position description (e.g. "2 of 5")
+    var uncertainReviewProgress: String? {
+        guard let idx = currentUncertainReviewIndex else { return nil }
+        return "\(idx + 1) of \(uncertainFrameIndices.count)"
     }
 
     @MainActor
@@ -284,6 +529,48 @@ class PoseDetectionViewModel {
         }
 
         return BodyPose(frameIndex: frameIndex, timestamp: timestamp, joints: joints)
+    }
+
+    // MARK: - Takeoff Detection
+
+    /// Detect the takeoff frame from pose data: last frame before sustained upward root movement.
+    /// Returns nil if there isn't enough pose data or no clear takeoff is detected.
+    static func detectTakeoffFrame(from poses: [BodyPose]) -> Int? {
+        let rootYValues = poses.map { $0.joints[.root]?.point.y ?? 0 }
+        guard rootYValues.count >= 15 else { return nil }
+
+        // Compute velocity (change in Y between frames)
+        var velocities: [Double] = [0]
+        for i in 1..<rootYValues.count {
+            velocities.append(Double(rootYValues[i] - rootYValues[i - 1]))
+        }
+
+        // Smooth velocities with 5-frame window
+        var smooth = velocities
+        for i in 2..<(velocities.count - 2) {
+            smooth[i] = (velocities[i-2] + velocities[i-1] + velocities[i] +
+                         velocities[i+1] + velocities[i+2]) / 5.0
+        }
+
+        // Find strongest velocity transition from low/negative to positive (takeoff moment)
+        var bestFrame: Int?
+        var bestScore: Double = 0
+
+        for i in 5..<(smooth.count - 5) {
+            let prevAvg = (smooth[i-3] + smooth[i-2] + smooth[i-1]) / 3.0
+            let nextAvg = (smooth[i+1] + smooth[i+2] + smooth[i+3]) / 3.0
+
+            if prevAvg < 0.005 && nextAvg > 0.005 {
+                let score = nextAvg - prevAvg
+                if score > bestScore {
+                    bestScore = score
+                    bestFrame = i
+                }
+            }
+        }
+
+        // Only return if the score is meaningful (indicates a real jump)
+        return bestScore > 0.003 ? bestFrame : nil
     }
 
     // MARK: - Private

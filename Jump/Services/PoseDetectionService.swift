@@ -1,6 +1,196 @@
 import Vision
 import AVFoundation
 import Foundation
+import CoreGraphics
+
+// MARK: - Smart Tracking Engine
+
+/// Intelligent person tracking that automatically follows the athlete
+/// and only asks for user input when there's ambiguity.
+struct SmartTrackingEngine {
+    
+    // MARK: - Types
+    
+    /// A decision point where user input is needed
+    struct DecisionPoint: Identifiable, Sendable {
+        let id = UUID()
+        let frameIndex: Int
+        let reason: Reason
+        let availablePeople: [BodyPose]
+        
+        enum Reason: Sendable {
+            case initialSelection
+            case newPersonEntered
+            case multipleOverlapping
+            case lowTrackingConfidence
+            case athleteLeftFrame
+        }
+        
+        var reasonText: String {
+            switch reason {
+            case .initialSelection: return "Select the athlete to track"
+            case .newPersonEntered: return "New person entered frame. Which is the athlete?"
+            case .multipleOverlapping: return "People overlapping. Confirm athlete selection"
+            case .lowTrackingConfidence: return "Tracking uncertain. Verify correct person"
+            case .athleteLeftFrame: return "Athlete may have left. Is this person the athlete?"
+            }
+        }
+    }
+    
+    /// Result of smart tracking
+    struct TrackingResult: Sendable {
+        let trackedPoses: [BodyPose]
+        let decisionPoints: [DecisionPoint]
+        let autoTrackedFrames: Set<Int>
+    }
+    
+    /// Person identity characteristics
+    struct PersonIdentity: Sendable {
+        let avgHeight: CGFloat
+        let avgWidth: CGFloat
+        let avgCenterY: CGFloat
+        
+        init(from pose: BodyPose) {
+            let bbox = pose.boundingBox ?? .zero
+            self.avgHeight = bbox.height
+            self.avgWidth = bbox.width
+            self.avgCenterY = bbox.midY
+        }
+    }
+    
+    // MARK: - Main Algorithm
+    
+    static func autoTrack(allFrameObservations: [FrameObservations]) -> TrackingResult {
+        var trackedPoses: [BodyPose] = []
+        var decisionPoints: [DecisionPoint] = []
+        var autoTrackedFrames: Set<Int> = []
+        var lastTrackedPose: BodyPose?
+        var athleteIdentity: PersonIdentity?
+        
+        for (frameIndex, frame) in allFrameObservations.enumerated() {
+            let poses = frame.observations
+            
+            if poses.isEmpty {
+                trackedPoses.append(.empty(frameIndex: frameIndex, timestamp: frame.timestamp))
+                continue
+            }
+            
+            if poses.count == 1 {
+                let pose = poses[0]
+                if athleteIdentity == nil {
+                    athleteIdentity = PersonIdentity(from: pose)
+                    decisionPoints.append(DecisionPoint(
+                        frameIndex: frameIndex,
+                        reason: .initialSelection,
+                        availablePeople: poses
+                    ))
+                } else if let lastPose = lastTrackedPose,
+                          matchesPerson(pose, identity: athleteIdentity!, lastPose: lastPose) {
+                    autoTrackedFrames.insert(frameIndex)
+                } else {
+                    decisionPoints.append(DecisionPoint(
+                        frameIndex: frameIndex,
+                        reason: .athleteLeftFrame,
+                        availablePeople: poses
+                    ))
+                }
+                trackedPoses.append(pose)
+                lastTrackedPose = pose
+                continue
+            }
+            
+            if let lastPose = lastTrackedPose, let identity = athleteIdentity {
+                let (bestMatch, confidence) = findBestMatch(among: poses, identity: identity, lastPose: lastPose)
+                if confidence > 0.75 {
+                    trackedPoses.append(bestMatch)
+                    lastTrackedPose = bestMatch
+                    autoTrackedFrames.insert(frameIndex)
+                } else {
+                    decisionPoints.append(DecisionPoint(
+                        frameIndex: frameIndex,
+                        reason: confidence > 0.4 ? .multipleOverlapping : .lowTrackingConfidence,
+                        availablePeople: poses
+                    ))
+                    trackedPoses.append(.empty(frameIndex: frameIndex, timestamp: frame.timestamp))
+                }
+            } else {
+                decisionPoints.append(DecisionPoint(
+                    frameIndex: frameIndex,
+                    reason: .initialSelection,
+                    availablePeople: poses
+                ))
+                trackedPoses.append(.empty(frameIndex: frameIndex, timestamp: frame.timestamp))
+            }
+        }
+        
+        return TrackingResult(trackedPoses: trackedPoses, decisionPoints: decisionPoints, autoTrackedFrames: autoTrackedFrames)
+    }
+    
+    static func matchesPerson(_ pose: BodyPose, identity: PersonIdentity, lastPose: BodyPose) -> Bool {
+        guard let bbox = pose.boundingBox, let lastBbox = lastPose.boundingBox else { return false }
+        let iou = intersectionOverUnion(lastBbox, bbox)
+        if iou > 0.5 { return true }
+        let heightRatio = bbox.height / identity.avgHeight
+        if heightRatio < 0.7 || heightRatio > 1.3 { return false }
+        let movement = sqrt(pow(bbox.midX - lastBbox.midX, 2) + pow(bbox.midY - lastBbox.midY, 2))
+        if movement > 0.3 { return false }
+        return true
+    }
+    
+    static func findBestMatch(among poses: [BodyPose], identity: PersonIdentity, lastPose: BodyPose) -> (pose: BodyPose, confidence: CGFloat) {
+        var bestPose = poses[0]
+        var bestScore: CGFloat = 0
+        for pose in poses {
+            var score: CGFloat = 0
+            var weights: CGFloat = 0
+            if let bbox = pose.boundingBox, let lastBbox = lastPose.boundingBox {
+                let iou = intersectionOverUnion(lastBbox, bbox)
+                score += iou * 0.6
+                weights += 0.6
+                let distance = sqrt(pow(bbox.midX - lastBbox.midX, 2) + pow(bbox.midY - lastBbox.midY, 2))
+                score += max(0, 1.0 - distance * 3) * 0.2
+                weights += 0.2
+            }
+            if let bbox = pose.boundingBox {
+                let heightSim = 1.0 - abs(bbox.height - identity.avgHeight) / identity.avgHeight
+                score += max(0, heightSim) * 0.2
+                weights += 0.2
+            }
+            let normalizedScore = weights > 0 ? score / weights : 0
+            if normalizedScore > bestScore {
+                bestScore = normalizedScore
+                bestPose = pose
+            }
+        }
+        return (bestPose, bestScore)
+    }
+    
+    static func intersectionOverUnion(_ a: CGRect, _ b: CGRect) -> CGFloat {
+        let intersection = a.intersection(b)
+        if intersection.isNull { return 0 }
+        let intersectionArea = intersection.width * intersection.height
+        let unionArea = a.width * a.height + b.width * b.height - intersectionArea
+        return unionArea > 0 ? intersectionArea / unionArea : 0
+    }
+}
+
+/// Enum to select the pose detection engine.
+/// Can be toggled at runtime or via feature flag to switch between Vision and BlazePose.
+extension PoseDetectionService {
+    enum PoseEngineType {
+        case vision, blazePose
+    }
+
+    /// Current pose detection engine.
+    /// Default is `.vision` (Apple Vision framework).
+    ///
+    /// To switch to QuickPose/BlazePose:
+    /// 1. Complete the QuickPose integration in `BlazePoseDetectionProvider`
+    /// 2. Change this property: `PoseDetectionService.poseEngine = .blazePose`
+    ///
+    /// The switch is global and affects all pose detection operations.
+    static var poseEngine: PoseEngineType = .vision
+}
 
 /// Thread-safe collector for poses during video processing.
 /// Uses NSLock for safe access from background threads.
@@ -22,10 +212,27 @@ private class PoseCollector: @unchecked Sendable {
 }
 
 /// Raw observations for a single video frame.
+/// Stores BodyPose objects that work with both Vision and QuickPose engines.
 struct FrameObservations: Sendable {
     let frameIndex: Int
     let timestamp: Double
-    let observations: [VNHumanBodyPoseObservation]
+    let observations: [BodyPose]
+    
+    /// Initializer for BodyPose observations (used by QuickPose and after Vision conversion)
+    init(frameIndex: Int, timestamp: Double, bodyPoses: [BodyPose]) {
+        self.frameIndex = frameIndex
+        self.timestamp = timestamp
+        self.observations = bodyPoses
+    }
+    
+    /// Legacy initializer for Vision framework (converts VNHumanBodyPoseObservation to BodyPose)
+    init(frameIndex: Int, timestamp: Double, visionObservations: [VNHumanBodyPoseObservation]) {
+        self.frameIndex = frameIndex
+        self.timestamp = timestamp
+        self.observations = visionObservations.map {
+            PoseDetectionService.bodyPose(from: $0, frameIndex: frameIndex, timestamp: timestamp)
+        }
+    }
 }
 
 /// Thread-safe collector for raw observations per frame.
@@ -44,6 +251,14 @@ private class ObservationCollector: @unchecked Sendable {
     func append(_ frame: FrameObservations) {
         lock.withLock { _frames.append(frame) }
     }
+}
+
+/// Result from retracking that includes both poses and uncertain frame indices.
+struct RetrackResult {
+    let poses: [BodyPose]
+    /// Frame indices where tracking confidence was low and user review may be needed.
+    /// Sorted by confidence (lowest first) so the most uncertain frame is first.
+    let uncertainFrameIndices: [Int]
 }
 
 struct PoseDetectionService {
@@ -138,6 +353,17 @@ struct PoseDetectionService {
         return request.results ?? []
     }
 
+    /// Dispatch method to detect all poses dynamically based on current poseEngine.
+    static func detectAllPosesDynamic(in pixelBuffer: CVPixelBuffer, frameIndex: Int) throws -> [BodyPose] {
+        switch poseEngine {
+        case .vision:
+            let observations = try detectAllPoses(in: pixelBuffer, frameIndex: frameIndex)
+            return observations.map { bodyPose(from: $0, frameIndex: frameIndex, timestamp: 0) }
+        case .blazePose:
+            return try BlazePoseDetectionProvider().detectAllPoses(in: pixelBuffer, frameIndex: frameIndex)
+        }
+    }
+
     /// Detect pose in a CGImage
     static func detectPose(
         in cgImage: CGImage,
@@ -200,20 +426,37 @@ struct PoseDetectionService {
     ) async throws -> [BodyPose] {
         let collector = PoseCollector(capacity: session.totalFrames)
 
-        try await VideoFrameExtractor.streamFrames(
-            from: url,
-            onFrame: { frameIndex, pixelBuffer, timestamp in
-                let observations = try detectAllPoses(in: pixelBuffer, frameIndex: frameIndex)
+        switch poseEngine {
+        case .vision:
+            try await VideoFrameExtractor.streamFrames(
+                from: url,
+                onFrame: { frameIndex, pixelBuffer, timestamp in
+                    let observations = try detectAllPoses(in: pixelBuffer, frameIndex: frameIndex)
 
-                if let selected = tracker.selectBest(from: observations, frameIndex: frameIndex) {
-                    let pose = bodyPose(from: selected, frameIndex: frameIndex, timestamp: timestamp)
-                    collector.append(pose)
-                } else {
-                    collector.append(.empty(frameIndex: frameIndex, timestamp: timestamp))
-                }
-            },
-            onProgress: onProgress
-        )
+                    if let selected = tracker.selectBest(from: observations, frameIndex: frameIndex) {
+                        let pose = bodyPose(from: selected, frameIndex: frameIndex, timestamp: timestamp)
+                        collector.append(pose)
+                    } else {
+                        collector.append(.empty(frameIndex: frameIndex, timestamp: timestamp))
+                    }
+                },
+                onProgress: onProgress
+            )
+        case .blazePose:
+            try await VideoFrameExtractor.streamFrames(
+                from: url,
+                onFrame: { frameIndex, pixelBuffer, timestamp in
+                    let poses = try BlazePoseDetectionProvider().detectAllPoses(in: pixelBuffer, frameIndex: frameIndex)
+
+                    if let selected = tracker.selectBest(from: poses, frameIndex: frameIndex) {
+                        collector.append(selected)
+                    } else {
+                        collector.append(.empty(frameIndex: frameIndex, timestamp: timestamp))
+                    }
+                },
+                onProgress: onProgress
+            )
+        }
 
         return collector.poses
     }
@@ -228,22 +471,31 @@ struct PoseDetectionService {
         session: JumpSession,
         onProgress: @escaping @Sendable (Double) -> Void
     ) async throws -> [FrameObservations] {
-        let collector = ObservationCollector(capacity: session.totalFrames)
+        switch poseEngine {
+        case .vision:
+            let collector = ObservationCollector(capacity: session.totalFrames)
 
-        try await VideoFrameExtractor.streamFrames(
-            from: url,
-            onFrame: { frameIndex, pixelBuffer, timestamp in
-                let observations = try detectAllPoses(in: pixelBuffer, frameIndex: frameIndex)
-                collector.append(FrameObservations(
-                    frameIndex: frameIndex,
-                    timestamp: timestamp,
-                    observations: observations
-                ))
-            },
-            onProgress: onProgress
-        )
+            try await VideoFrameExtractor.streamFrames(
+                from: url,
+                onFrame: { frameIndex, pixelBuffer, timestamp in
+                    let observations = try detectAllPoses(in: pixelBuffer, frameIndex: frameIndex)
+                    collector.append(FrameObservations(
+                        frameIndex: frameIndex,
+                        timestamp: timestamp,
+                        visionObservations: observations
+                    ))
+                },
+                onProgress: onProgress
+            )
 
-        return collector.frames
+            return collector.frames
+        case .blazePose:
+            return try await BlazePoseDetectionProvider().collectAllObservations(
+                url: url,
+                session: session,
+                onProgress: onProgress
+            )
+        }
     }
 
     /// Re-track from stored observations bidirectionally from a selected frame.
@@ -267,7 +519,7 @@ struct PoseDetectionService {
         for i in selectionFrameIndex..<totalFrames {
             let frame = allFrameObservations[i]
             if let selected = forwardTracker.selectBest(from: frame.observations, frameIndex: frame.frameIndex) {
-                poses[i] = bodyPose(from: selected, frameIndex: frame.frameIndex, timestamp: frame.timestamp)
+                poses[i] = selected
             } else {
                 poses[i] = .empty(frameIndex: frame.frameIndex, timestamp: frame.timestamp)
             }
@@ -280,7 +532,7 @@ struct PoseDetectionService {
         for i in stride(from: selectionFrameIndex, through: 0, by: -1) {
             let frame = allFrameObservations[i]
             if let selected = backwardTracker.selectBest(from: frame.observations, frameIndex: frame.frameIndex) {
-                poses[i] = bodyPose(from: selected, frameIndex: frame.frameIndex, timestamp: frame.timestamp)
+                poses[i] = selected
             } else {
                 poses[i] = .empty(frameIndex: frame.frameIndex, timestamp: frame.timestamp)
             }
@@ -292,18 +544,34 @@ struct PoseDetectionService {
     /// Re-track using multiple user annotations.
     /// Each annotation is a (frameIndex, visionPoint) pair where the user identified the athlete.
     /// The video is segmented: between annotations, tracking propagates from the nearest annotation.
-    /// This gives much better results when a single bidirectional pass loses the person.
+    ///
+    /// Key design: at the annotation frame, we identify which observation matches (via selectNearest),
+    /// then track that specific person forward/backward using centroid + bbox scoring.
+    /// The annotation frame is the "anchor" — we find the person there, then propagate.
+    ///
+    /// Returns a `RetrackResult` with poses and indices of frames where tracking confidence was low.
     static func retrackWithMultipleAnnotations(
         allFrameObservations: [FrameObservations],
         annotations: [(frame: Int, point: CGPoint)]
-    ) -> [BodyPose] {
+    ) -> RetrackResult {
         let totalFrames = allFrameObservations.count
-        guard totalFrames > 0, !annotations.isEmpty else { return [] }
+        guard totalFrames > 0, !annotations.isEmpty else {
+            return RetrackResult(poses: [], uncertainFrameIndices: [])
+        }
 
         var poses = [BodyPose](repeating: .empty(frameIndex: 0, timestamp: 0), count: totalFrames)
+        // Track confidence per frame: (frameIndex, confidence)
+        var frameConfidences: [(frame: Int, confidence: CGFloat)] = []
+
+        // Confidence threshold: frames below this are flagged for user review.
+        // Set fairly high so crossover frames are caught even when the tracker
+        // picks a candidate with reasonable distance but wrong identity.
+        let uncertaintyThreshold: CGFloat = 0.55
 
         // Sort annotations by frame
         let sorted = annotations.sorted { $0.frame < $1.frame }
+        // Track which frames are annotation frames (user-confirmed, never uncertain)
+        let annotationFrames = Set(sorted.map { min($0.frame, totalFrames - 1) })
 
         // For each annotation, track forward to the midpoint to the next annotation (or end),
         // and backward to the midpoint to the previous annotation (or start).
@@ -326,34 +594,116 @@ struct PoseDetectionService {
                 forwardBound = totalFrames - 1
             }
 
-            // Track forward from this annotation
-            let forwardTracker = PersonTracker()
-            forwardTracker.setManualOverride(point: ann.point)
+            // First, identify which person at the annotation frame using the tap point
+            let anchorFrame = allFrameObservations[selFrame]
+            let anchorTracker = PersonTracker()
+            anchorTracker.setManualOverride(point: ann.point)
+            let anchorPose = anchorTracker.selectBest(from: anchorFrame.observations, frameIndex: anchorFrame.frameIndex)
 
-            for i in selFrame...forwardBound {
+            if let anchorPose {
+                poses[selFrame] = anchorPose
+            }
+
+            // Track FORWARD from annotation frame.
+            // Initialize tracker with the anchor observation (not just the point).
+            let forwardTracker = PersonTracker()
+            // Seed the tracker with the anchor person by selecting them at the anchor frame
+            forwardTracker.setManualOverride(point: ann.point)
+            _ = forwardTracker.selectBest(from: anchorFrame.observations, frameIndex: anchorFrame.frameIndex)
+            // Now the tracker is locked onto the right person with their bbox/centroid
+
+            for i in (selFrame + 1)...forwardBound {
                 let frame = allFrameObservations[i]
-                if let selected = forwardTracker.selectBest(from: frame.observations, frameIndex: frame.frameIndex) {
-                    poses[i] = bodyPose(from: selected, frameIndex: frame.frameIndex, timestamp: frame.timestamp)
+                let distFromAnchor = i - selFrame
+                if let result = forwardTracker.selectBestWithConfidence(from: frame.observations, frameIndex: frame.frameIndex) {
+                    poses[i] = result.pose
+                    if !annotationFrames.contains(i) {
+                        // Apply distance decay: confidence decreases further from anchor
+                        let decayFactor: CGFloat = max(0.5, 1.0 - CGFloat(distFromAnchor) * 0.008)
+                        let adjustedConf = result.confidence * decayFactor
+                        // Record confidence for all multi-person frames
+                        if frame.observations.count > 1 {
+                            frameConfidences.append((frame: i, confidence: adjustedConf))
+                        }
+                    }
                 } else {
                     poses[i] = .empty(frameIndex: frame.frameIndex, timestamp: frame.timestamp)
+                    if !frame.observations.isEmpty && !annotationFrames.contains(i) {
+                        frameConfidences.append((frame: i, confidence: 0.0))
+                    }
                 }
             }
 
-            // Track backward from this annotation
+            // Track BACKWARD from annotation frame.
             let backwardTracker = PersonTracker()
             backwardTracker.setManualOverride(point: ann.point)
+            _ = backwardTracker.selectBest(from: anchorFrame.observations, frameIndex: anchorFrame.frameIndex)
 
-            for i in stride(from: selFrame, through: backwardBound, by: -1) {
-                let frame = allFrameObservations[i]
-                if let selected = backwardTracker.selectBest(from: frame.observations, frameIndex: frame.frameIndex) {
-                    poses[i] = bodyPose(from: selected, frameIndex: frame.frameIndex, timestamp: frame.timestamp)
-                } else {
-                    poses[i] = .empty(frameIndex: frame.frameIndex, timestamp: frame.timestamp)
+            if selFrame - 1 >= backwardBound {
+                for i in stride(from: selFrame - 1, through: backwardBound, by: -1) {
+                    let frame = allFrameObservations[i]
+                    let distFromAnchor = selFrame - i
+                    if let result = backwardTracker.selectBestWithConfidence(from: frame.observations, frameIndex: frame.frameIndex) {
+                        poses[i] = result.pose
+                        if !annotationFrames.contains(i) {
+                            let decayFactor: CGFloat = max(0.5, 1.0 - CGFloat(distFromAnchor) * 0.008)
+                            let adjustedConf = result.confidence * decayFactor
+                            if frame.observations.count > 1 {
+                                frameConfidences.append((frame: i, confidence: adjustedConf))
+                            }
+                        }
+                    } else {
+                        poses[i] = .empty(frameIndex: frame.frameIndex, timestamp: frame.timestamp)
+                        if !frame.observations.isEmpty && !annotationFrames.contains(i) {
+                            frameConfidences.append((frame: i, confidence: 0.0))
+                        }
+                    }
                 }
             }
         }
 
-        return poses
+        // Find uncertain frames: below threshold, deduplicated, sorted by confidence (lowest first)
+        // A frame may appear twice (forward + backward pass). Take the lower confidence.
+        var minConfByFrame: [Int: CGFloat] = [:]
+        for fc in frameConfidences {
+            if let existing = minConfByFrame[fc.frame] {
+                minConfByFrame[fc.frame] = min(existing, fc.confidence)
+            } else {
+                minConfByFrame[fc.frame] = fc.confidence
+            }
+        }
+
+        let uncertainFrames = minConfByFrame
+            .filter { $0.value < uncertaintyThreshold }
+            .sorted { $0.value < $1.value }  // Most uncertain first
+            .map { $0.key }
+
+        // Cluster uncertain frames: only keep one per cluster of consecutive frames
+        // (no need to ask user about every single frame in a group)
+        // Limit to at most ~8 uncertain frames to avoid overwhelming the user
+        let clustered = clusterUncertainFrames(uncertainFrames, minSpacing: 8)
+        let limited = Array(clustered.prefix(8))
+
+        return RetrackResult(poses: poses, uncertainFrameIndices: limited)
+    }
+
+    /// Cluster uncertain frames so we don't show 20 consecutive orange dots.
+    /// Keeps the most uncertain (lowest confidence) frame from each cluster.
+    private static func clusterUncertainFrames(_ frames: [Int], minSpacing: Int) -> [Int] {
+        guard !frames.isEmpty else { return [] }
+
+        // Frames are already sorted by confidence (lowest first).
+        // We greedily pick frames, skipping any that are within `minSpacing` of an already-picked frame.
+        var picked: [Int] = []
+        for frame in frames {
+            let tooClose = picked.contains { abs($0 - frame) < minSpacing }
+            if !tooClose {
+                picked.append(frame)
+            }
+        }
+
+        // Sort by frame index for display
+        return picked.sorted()
     }
 
     /// Simple forward-only tracking from stored observations (used for initial detection pass).
@@ -366,7 +716,7 @@ struct PoseDetectionService {
 
         for frame in allFrameObservations {
             if let selected = tracker.selectBest(from: frame.observations, frameIndex: frame.frameIndex) {
-                poses.append(bodyPose(from: selected, frameIndex: frame.frameIndex, timestamp: frame.timestamp))
+                poses.append(selected)
             } else {
                 poses.append(.empty(frameIndex: frame.frameIndex, timestamp: frame.timestamp))
             }

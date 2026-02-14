@@ -1,8 +1,29 @@
+import Foundation
 import SwiftUI
 
 struct HomeView: View {
     @State private var showVideoImport = false
     @State private var selectedSession: JumpSession?
+    @State private var showSettings = false
+    @State private var poseEngineSelection: PoseEngineSetting = {
+        if let stored = UserDefaults.standard.string(forKey: "poseEngine"),
+           let setting = PoseEngineSetting(rawValue: stored) {
+            return setting
+        } else {
+            return .vision
+        }
+    }()
+
+    enum PoseEngineSetting: String, CaseIterable, Identifiable {
+        case vision, blazePose
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .vision: return "Apple Vision"
+            case .blazePose: return "MediaPipe BlazePose"
+            }
+        }
+    }
 
     var body: some View {
         ZStack {
@@ -30,9 +51,14 @@ struct HomeView: View {
                         .font(.system(size: 44, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
 
-                    Text("High Jump Analysis")
-                        .font(.title3)
-                        .foregroundStyle(.jumpSubtle)
+                    HStack {
+                        Text("High Jump Analysis")
+                            .font(.title3)
+                            .foregroundStyle(.jumpSubtle)
+                        Spacer()
+                    }
+                    .padding(.top, 8)
+                    .padding(.horizontal)
                 }
 
                 Spacer()
@@ -77,6 +103,18 @@ struct HomeView: View {
                     .frame(height: 40)
             }
         }
+        .overlay(alignment: .topTrailing) {
+            Button {
+                showSettings = true
+            } label: {
+                Image(systemName: "gearshape")
+                    .foregroundStyle(.jumpSubtle)
+                    .font(.title2)
+                    .accessibilityLabel("Settings")
+                    .padding(.top, UIApplication.shared.windows.first?.safeAreaInsets.top ?? 16)
+                    .padding(.trailing, 16)
+            }
+        }
         .navigationBarHidden(true)
         .fullScreenCover(isPresented: $showVideoImport) {
             VideoImportView { session in
@@ -85,6 +123,39 @@ struct HomeView: View {
         }
         .navigationDestination(item: $selectedSession) { session in
             VideoAnalysisView(session: session)
+        }
+        .sheet(isPresented: $showSettings) {
+            settingsSheet
+        }
+        .onAppear {
+            PoseDetectionService.poseEngine = poseEngineSelection == .blazePose ? .blazePose : .vision
+        }
+    }
+
+    private var settingsSheet: some View {
+        NavigationStack {
+            Form {
+                Section("Pose Engine") {
+                    Picker("Select Pose Engine", selection: $poseEngineSelection) {
+                        ForEach(PoseEngineSetting.allCases) { setting in
+                            Text(setting.label).tag(setting)
+                        }
+                    }
+                    .pickerStyle(.inline)
+                    .onChange(of: poseEngineSelection) { newValue in
+                        PoseDetectionService.poseEngine = newValue == .blazePose ? .blazePose : .vision
+                        UserDefaults.standard.set(newValue.rawValue, forKey: "poseEngine")
+                    }
+                }
+            }
+            .navigationTitle("Settings")
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        showSettings = false
+                    }
+                }
+            }
         }
     }
 }

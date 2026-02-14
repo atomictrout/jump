@@ -28,6 +28,24 @@ struct AnalysisEngine {
             )
         }
 
+        // Sanity check: verify the tracked person actually jumped
+        if !validateJumpDetected(poses: poses) {
+            return AnalysisResult(
+                phases: [],
+                measurements: JumpMeasurements(),
+                errors: [],
+                recommendations: [
+                    Recommendation(
+                        id: UUID(),
+                        title: "No Jump Detected",
+                        detail: "The tracked person doesn't appear to jump. The skeleton may be on a bystander. Go back and re-select the correct jumper using the Person button — scrub to a frame where the athlete is clearly visible and tap them.",
+                        relatedError: nil,
+                        priority: 1
+                    )
+                ]
+            )
+        }
+
         // 1. Smooth pose data
         let smoothedPoses = smoothPoses(poses)
 
@@ -912,5 +930,32 @@ struct AnalysisEngine {
             let normalizedAboveGround = Double(peakHeight) - Double(groundY)
             measurements.peakHeightMeters = normalizedAboveGround * scale
         }
+    }
+
+    // MARK: - Jump Validation
+
+    /// Verify that the tracked person actually performed a jump.
+    /// A real jump shows significant vertical rise in the root Y position.
+    /// If the root barely moves vertically, it's likely tracking a bystander.
+    private static func validateJumpDetected(poses: [BodyPose]) -> Bool {
+        // Collect root Y positions for frames with valid poses
+        let rootYValues = poses.compactMap { pose -> CGFloat? in
+            guard pose.hasMinimumConfidence,
+                  let root = pose.joints[.root] else { return nil }
+            return root.point.y
+        }
+
+        guard rootYValues.count >= 10 else { return true } // Not enough data to validate
+
+        // Find the range of root Y motion
+        let minY = rootYValues.min() ?? 0
+        let maxY = rootYValues.max() ?? 0
+        let verticalRange = maxY - minY
+
+        // A real high jump should show at least ~8% of frame height vertical motion
+        // (a bystander standing still typically has <3% variation from pose jitter)
+        let jumpThreshold: CGFloat = 0.06
+
+        return verticalRange >= jumpThreshold
     }
 }

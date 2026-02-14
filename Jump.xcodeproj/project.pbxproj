@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 77;
+	objectVersion = 63;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -25,6 +25,15 @@
 		8B7B3E57176C25FA57D7CE10 /* Photos.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F4C712185EEAF9DF3749CE59 /* Photos.framework */; };
 		8C4721BF565CCD26ACE2DB41 /* Vision.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E7841E55E302CF0A3A96933A /* Vision.framework */; };
 		9192F1021C162EA49E2EEF2F /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4F925A68C1A118D2B1FA29BD /* AVFoundation.framework */; };
+		9C33B3F82F3EB77300502EEA /* PoseDetectionProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C33B3F72F3EB77300502EEA /* PoseDetectionProvider.swift */; };
+		9C7E0B9E2F412CC100488FE6 /* .gitignore in Resources */ = {isa = PBXBuildFile; fileRef = 9C7E0B9D2F412CC100488FE6 /* .gitignore */; };
+		9C7F54C12F40F635000851C9 /* pose_landmarker_heavy.task in Resources */ = {isa = PBXBuildFile; fileRef = 9C7F54C02F40F635000851C9 /* pose_landmarker_heavy.task */; };
+		9C7F54C32F41104B000851C9 /* VISUAL_SELECTION_GUIDE.md in Resources */ = {isa = PBXBuildFile; fileRef = 9C7F54C22F41104B000851C9 /* VISUAL_SELECTION_GUIDE.md */; };
+		9C7F54C52F411236000851C9 /* NO_ATHLETE_FEATURE.md in Resources */ = {isa = PBXBuildFile; fileRef = 9C7F54C42F411236000851C9 /* NO_ATHLETE_FEATURE.md */; };
+		9C7F54C72F412788000851C9 /* IMPLEMENTATION_COMPLETE.md in Resources */ = {isa = PBXBuildFile; fileRef = 9C7F54C62F412788000851C9 /* IMPLEMENTATION_COMPLETE.md */; };
+		9C7F54C92F4127A7000851C9 /* INTEGRATION_GUIDE.md in Resources */ = {isa = PBXBuildFile; fileRef = 9C7F54C82F4127A7000851C9 /* INTEGRATION_GUIDE.md */; };
+		9C7F54CB2F4128C8000851C9 /* PersonSelectionSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C7F54CA2F4128C8000851C9 /* PersonSelectionSheetView.swift */; };
+		9CB8463D2F40F07D00F8D991 /* MediaPipeSetupGuide.md in Resources */ = {isa = PBXBuildFile; fileRef = 9CB8463C2F40F07D00F8D991 /* MediaPipeSetupGuide.md */; };
 		A993C6ADEC7F6B4A506AF099 /* BarDetectionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E4E404A5CF8554522B535AD /* BarDetectionService.swift */; };
 		AAAA79A42AC7796043F6CADE /* PoseDetectionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F478FA6F4B54C387A1FEE585 /* PoseDetectionViewModel.swift */; };
 		AD79E2FDC283A500F5FAD4D3 /* VideoPlayerViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD1995E3DC811E6A0263A4D9 /* VideoPlayerViewModel.swift */; };
@@ -38,6 +47,7 @@
 		CAFA71C7188C9963F9D60B40 /* BarDetectionResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31B88A3D36BC33991BEF0B06 /* BarDetectionResult.swift */; };
 		D09F7312F252113EA73FF923 /* ThumbnailGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E2352F47A2B2FD8069895BC /* ThumbnailGenerator.swift */; };
 		D67C42F01F1D43B6AD2A6F57 /* JumpApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C4BEDDF4EC4837A0BB8917E /* JumpApp.swift */; };
+		DE07C069584AFAB44D4449CB /* Pods_Jump.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 08FDA1C48008C366EE83AC0D /* Pods_Jump.framework */; };
 		EBB899E2B96555AE4F9D41D2 /* AnalysisEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F38AFE3E61955ADEAF262DA /* AnalysisEngine.swift */; };
 		EE15BF65404A7EA7CE8E0EEF /* JumpSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7E5F261262E89D7ACF0B71D /* JumpSession.swift */; };
 		EF74FBCBC5C214C688552A7E /* AnalysisResultsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CF4D324A6AAD96855199295 /* AnalysisResultsView.swift */; };
@@ -48,6 +58,7 @@
 /* Begin PBXFileReference section */
 		07ED526768C9A1A7BE9BC268 /* Color+Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Color+Theme.swift"; sourceTree = "<group>"; };
 		08A2E3BC988D7AF0CB587C3B /* AngleCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AngleCalculator.swift; sourceTree = "<group>"; };
+		08FDA1C48008C366EE83AC0D /* Pods_Jump.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Jump.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		1358049242359C8651669767 /* CGPoint+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "CGPoint+Extensions.swift"; sourceTree = "<group>"; };
 		1E4E404A5CF8554522B535AD /* BarDetectionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarDetectionService.swift; sourceTree = "<group>"; };
 		31B88A3D36BC33991BEF0B06 /* BarDetectionResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarDetectionResult.swift; sourceTree = "<group>"; };
@@ -56,8 +67,10 @@
 		3CF4D324A6AAD96855199295 /* AnalysisResultsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisResultsView.swift; sourceTree = "<group>"; };
 		48D73A8AC057DCF1A4E8F6D8 /* VideoImportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoImportView.swift; sourceTree = "<group>"; };
 		498F8D1EA2BF71A0F3BB0B57 /* CoreImage.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreImage.framework; path = System/Library/Frameworks/CoreImage.framework; sourceTree = SDKROOT; };
+		4A7CCF1240595A5D45AF37E7 /* Pods-Jump.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Jump.release.xcconfig"; path = "Target Support Files/Pods-Jump/Pods-Jump.release.xcconfig"; sourceTree = "<group>"; };
 		4F925A68C1A118D2B1FA29BD /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
 		577DF8AE2B9EEF6C0EE53C93 /* BodyPose.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BodyPose.swift; sourceTree = "<group>"; };
+		578CEE0B4D82B99A23473521 /* Pods-Jump.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Jump.debug.xcconfig"; path = "Target Support Files/Pods-Jump/Pods-Jump.debug.xcconfig"; sourceTree = "<group>"; };
 		5A9627C1726AA3EFFBD32258 /* AnalysisViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisViewModel.swift; sourceTree = "<group>"; };
 		61016581F1A5DB157E8818AE /* VideoAnalysisView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoAnalysisView.swift; sourceTree = "<group>"; };
 		65401AADC7861A0BD588DE6E /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -66,10 +79,19 @@
 		857EC4605C590FBFE6C8D0D0 /* SkeletonOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkeletonOverlayView.swift; sourceTree = "<group>"; };
 		8C88550B81BC1FDF73962192 /* AnalysisResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisResult.swift; sourceTree = "<group>"; };
 		8CFF46E3AB9A692E3057B6B7 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
-		8DB17A5F6183D7511950447A /* Jump.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Jump.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		8DB17A5F6183D7511950447A /* Jump.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Jump.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		8F38AFE3E61955ADEAF262DA /* AnalysisEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisEngine.swift; sourceTree = "<group>"; };
 		90564933FCAEF85EF27EA00E /* PoseDetectionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PoseDetectionService.swift; sourceTree = "<group>"; };
 		97EB474C4E65A9EAA49E8218 /* BarHeightParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarHeightParser.swift; sourceTree = "<group>"; };
+		9C33B3F72F3EB77300502EEA /* PoseDetectionProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PoseDetectionProvider.swift; sourceTree = "<group>"; };
+		9C7E0B9D2F412CC100488FE6 /* .gitignore */ = {isa = PBXFileReference; lastKnownFileType = text; path = .gitignore; sourceTree = "<group>"; };
+		9C7F54C02F40F635000851C9 /* pose_landmarker_heavy.task */ = {isa = PBXFileReference; lastKnownFileType = file; path = pose_landmarker_heavy.task; sourceTree = "<group>"; };
+		9C7F54C22F41104B000851C9 /* VISUAL_SELECTION_GUIDE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = VISUAL_SELECTION_GUIDE.md; sourceTree = "<group>"; };
+		9C7F54C42F411236000851C9 /* NO_ATHLETE_FEATURE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = NO_ATHLETE_FEATURE.md; sourceTree = "<group>"; };
+		9C7F54C62F412788000851C9 /* IMPLEMENTATION_COMPLETE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = IMPLEMENTATION_COMPLETE.md; sourceTree = "<group>"; };
+		9C7F54C82F4127A7000851C9 /* INTEGRATION_GUIDE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = INTEGRATION_GUIDE.md; sourceTree = "<group>"; };
+		9C7F54CA2F4128C8000851C9 /* PersonSelectionSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonSelectionSheetView.swift; sourceTree = "<group>"; };
+		9CB8463C2F40F07D00F8D991 /* MediaPipeSetupGuide.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = MediaPipeSetupGuide.md; sourceTree = "<group>"; };
 		9EEA33FED5650B09D52AE390 /* VideoFrameExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoFrameExtractor.swift; sourceTree = "<group>"; };
 		AA02142AE8C54C90092467BF /* VideoImportViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoImportViewModel.swift; sourceTree = "<group>"; };
 		AD1995E3DC811E6A0263A4D9 /* VideoPlayerViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoPlayerViewModel.swift; sourceTree = "<group>"; };
@@ -95,6 +117,7 @@
 				447BB1C47D417C3984F93893 /* CoreImage.framework in Frameworks */,
 				8B7B3E57176C25FA57D7CE10 /* Photos.framework in Frameworks */,
 				F7EDBDF145B2C84B1D771B11 /* PhotosUI.framework in Frameworks */,
+				DE07C069584AFAB44D4449CB /* Pods_Jump.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -121,8 +144,18 @@
 				577DF8AE2B9EEF6C0EE53C93 /* BodyPose.swift */,
 				FE2624596EE4B4AF851D383B /* JumpPhase.swift */,
 				C7E5F261262E89D7ACF0B71D /* JumpSession.swift */,
+				9C7F54CA2F4128C8000851C9 /* PersonSelectionSheetView.swift */,
 			);
 			path = Models;
+			sourceTree = "<group>";
+		};
+		45F64996FF221C70A6BAB722 /* Pods */ = {
+			isa = PBXGroup;
+			children = (
+				578CEE0B4D82B99A23473521 /* Pods-Jump.debug.xcconfig */,
+				4A7CCF1240595A5D45AF37E7 /* Pods-Jump.release.xcconfig */,
+			);
+			path = Pods;
 			sourceTree = "<group>";
 		};
 		4714408977DC8CE5E8E5D1EC /* Services */ = {
@@ -153,6 +186,10 @@
 				F478FA6F4B54C387A1FEE585 /* PoseDetectionViewModel.swift */,
 				AA02142AE8C54C90092467BF /* VideoImportViewModel.swift */,
 				AD1995E3DC811E6A0263A4D9 /* VideoPlayerViewModel.swift */,
+				9C7F54C22F41104B000851C9 /* VISUAL_SELECTION_GUIDE.md */,
+				9C7F54C42F411236000851C9 /* NO_ATHLETE_FEATURE.md */,
+				9C7F54C62F412788000851C9 /* IMPLEMENTATION_COMPLETE.md */,
+				9C7F54C82F4127A7000851C9 /* INTEGRATION_GUIDE.md */,
 			);
 			path = ViewModels;
 			sourceTree = "<group>";
@@ -168,6 +205,8 @@
 				857EC4605C590FBFE6C8D0D0 /* SkeletonOverlayView.swift */,
 				61016581F1A5DB157E8818AE /* VideoAnalysisView.swift */,
 				48D73A8AC057DCF1A4E8F6D8 /* VideoImportView.swift */,
+				9C33B3F72F3EB77300502EEA /* PoseDetectionProvider.swift */,
+				9CB8463C2F40F07D00F8D991 /* MediaPipeSetupGuide.md */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -183,9 +222,12 @@
 		B04AD9EB6386DCEF6325CC98 = {
 			isa = PBXGroup;
 			children = (
+				9C7F54C02F40F635000851C9 /* pose_landmarker_heavy.task */,
 				E44BA6BDD162C2C7F8A6103C /* Jump */,
 				B6E3C37CCF868A3474C6EBDE /* Frameworks */,
 				995F8666E13C9C1E87E218AF /* Products */,
+				45F64996FF221C70A6BAB722 /* Pods */,
+				9C7E0B9D2F412CC100488FE6 /* .gitignore */,
 			);
 			sourceTree = "<group>";
 		};
@@ -197,6 +239,7 @@
 				F4C712185EEAF9DF3749CE59 /* Photos.framework */,
 				B2298CE78D5D2A5CA33C5247 /* PhotosUI.framework */,
 				E7841E55E302CF0A3A96933A /* Vision.framework */,
+				08FDA1C48008C366EE83AC0D /* Pods_Jump.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -223,6 +266,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = A0BCF85613A6EFD55756EA66 /* Build configuration list for PBXNativeTarget "Jump" */;
 			buildPhases = (
+				EB14FFE8DDA77FD1E5CEA009 /* [CP] Check Pods Manifest.lock */,
 				176E2057084D91AFC2F89D02 /* Sources */,
 				21984A93B617F449766C25EE /* Resources */,
 				A2A5C2ED470ABEC34031C6C3 /* Frameworks */,
@@ -248,6 +292,7 @@
 				LastUpgradeCheck = 1500;
 				TargetAttributes = {
 					CB14FDC517D5EDEEDCEB6379 = {
+						DevelopmentTeam = PGXA7T3QCU;
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -262,7 +307,9 @@
 			);
 			mainGroup = B04AD9EB6386DCEF6325CC98;
 			minimizedProjectReferenceProxies = 1;
-			preferredProjectObjectVersion = 77;
+			packageReferences = (
+			);
+			productRefGroup = 995F8666E13C9C1E87E218AF /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -276,11 +323,43 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				9C7E0B9E2F412CC100488FE6 /* .gitignore in Resources */,
+				9CB8463D2F40F07D00F8D991 /* MediaPipeSetupGuide.md in Resources */,
+				9C7F54C72F412788000851C9 /* IMPLEMENTATION_COMPLETE.md in Resources */,
+				9C7F54C12F40F635000851C9 /* pose_landmarker_heavy.task in Resources */,
+				9C7F54C92F4127A7000851C9 /* INTEGRATION_GUIDE.md in Resources */,
+				9C7F54C32F41104B000851C9 /* VISUAL_SELECTION_GUIDE.md in Resources */,
 				2ABC1661F58B719D09C51F36 /* Assets.xcassets in Resources */,
+				9C7F54C52F411236000851C9 /* NO_ATHLETE_FEATURE.md in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		EB14FFE8DDA77FD1E5CEA009 /* [CP] Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+				"${PODS_ROOT}/Manifest.lock",
+			);
+			name = "[CP] Check Pods Manifest.lock";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/Pods-Jump-checkManifestLockResult.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		176E2057084D91AFC2F89D02 /* Sources */ = {
@@ -297,6 +376,7 @@
 				A993C6ADEC7F6B4A506AF099 /* BarDetectionService.swift in Sources */,
 				87E4AF559E34D0E9109480DA /* BarHeightParser.swift in Sources */,
 				20F5653F1D435EE891A3C05A /* BodyPose.swift in Sources */,
+				9C7F54CB2F4128C8000851C9 /* PersonSelectionSheetView.swift in Sources */,
 				4F52B3EBF981A0B9A6AE8D39 /* CGPoint+Extensions.swift in Sources */,
 				7E0F8CCCFB534670F67E815A /* CameraRecorderView.swift in Sources */,
 				AE116CC296F05FE2042F400D /* Color+Theme.swift in Sources */,
@@ -312,6 +392,7 @@
 				AAAA79A42AC7796043F6CADE /* PoseDetectionViewModel.swift in Sources */,
 				52E9E3496879453CD89CEFA0 /* SkeletonOverlayView.swift in Sources */,
 				D09F7312F252113EA73FF923 /* ThumbnailGenerator.swift in Sources */,
+				9C33B3F82F3EB77300502EEA /* PoseDetectionProvider.swift in Sources */,
 				2384AA3C743DDF53603570A2 /* VideoAnalysisView.swift in Sources */,
 				78A8E41B3DDE0268FF017FF6 /* VideoFrameExtractor.swift in Sources */,
 				C3AB204F2E733F448F2B95FE /* VideoImportView.swift in Sources */,
@@ -325,12 +406,14 @@
 /* Begin XCBuildConfiguration section */
 		0C1A6341B5761EAA7F9217C4 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 578CEE0B4D82B99A23473521 /* Pods-Jump.debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = PGXA7T3QCU;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_GENERATION_MODE = GeneratedFile;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Jump needs access to your camera to record videos for analysis.";
@@ -346,7 +429,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.jump.Jump;
+				PRODUCT_BUNDLE_IDENTIFIER = com.adamklein.jump;
 				SDKROOT = iphoneos;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -476,12 +559,14 @@
 		};
 		BFBEEAC8C9AC3B930A3513C4 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 4A7CCF1240595A5D45AF37E7 /* Pods-Jump.release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = PGXA7T3QCU;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_GENERATION_MODE = GeneratedFile;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Jump needs access to your camera to record videos for analysis.";
@@ -497,7 +582,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.jump.Jump;
+				PRODUCT_BUNDLE_IDENTIFIER = com.adamklein.jump;
 				SDKROOT = iphoneos;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				TARGETED_DEVICE_FAMILY = "1,2";

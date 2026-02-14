@@ -1,5 +1,6 @@
 import SwiftUI
 import AVFoundation
+import Foundation
 
 struct VideoAnalysisView: View {
     let session: JumpSession
@@ -10,6 +11,10 @@ struct VideoAnalysisView: View {
 
     // Workflow state
     @State private var isSelectingPerson = false
+    
+    // Smart tracking decision points
+    @State private var showDecisionSheet = false
+    @State private var currentDecision: SmartTrackingEngine.DecisionPoint?
 
     // Bar marking state
     @State private var isMarkingBar = false
@@ -22,6 +27,9 @@ struct VideoAnalysisView: View {
     @State private var lastZoomScale: CGFloat = 1.0
     @State private var zoomOffset: CGSize = .zero
     @State private var lastZoomOffset: CGSize = .zero
+
+    // Finger offset when dragging bar crosshairs — crosshair sits above finger so you can see it
+    private let barDragFingerOffset: CGFloat = 44
 
     // Bar height input
     @State private var showBarHeightInput = false
@@ -53,10 +61,46 @@ struct VideoAnalysisView: View {
                     .padding(.horizontal)
                     .padding(.vertical, 8)
 
-                // Scrubber
-                FrameScrubberView(viewModel: playerVM)
-                    .padding(.horizontal)
-                    .padding(.bottom, 8)
+                // Scrubber with annotation + uncertain frame markers
+                ZStack(alignment: .top) {
+                    FrameScrubberView(viewModel: playerVM)
+
+                    GeometryReader { geo in
+                        // Person annotation markers (cyan dots)
+                        ForEach(poseVM.personAnnotations.indices, id: \.self) { idx in
+                            let ann = poseVM.personAnnotations[idx]
+                            let xPos = playerVM.totalFrames > 1
+                                ? geo.size.width * CGFloat(ann.frame) / CGFloat(playerVM.totalFrames - 1)
+                                : 0
+                            Circle()
+                                .fill(Color.cyan)
+                                .frame(width: 6, height: 6)
+                                .position(x: xPos, y: 3)
+                        }
+
+                        // Uncertain frame markers (orange dots)
+                        ForEach(poseVM.uncertainFrameIndices, id: \.self) { frameIdx in
+                            let xPos = playerVM.totalFrames > 1
+                                ? geo.size.width * CGFloat(frameIdx) / CGFloat(playerVM.totalFrames - 1)
+                                : 0
+                            Circle()
+                                .fill(Color.orange)
+                                .frame(width: 6, height: 6)
+                                .position(x: xPos, y: 3)
+                        }
+
+                        // Takeoff frame marker (green triangle)
+                        if let takeoffFrame = poseVM.takeoffFrameIndex, playerVM.totalFrames > 1 {
+                            let xPos = geo.size.width * CGFloat(takeoffFrame) / CGFloat(playerVM.totalFrames - 1)
+                            takeoffTriangle
+                                .position(x: xPos, y: 3)
+                        }
+                    }
+                    .allowsHitTesting(false)
+                }
+                .frame(height: 56)
+                .padding(.horizontal)
+                .padding(.bottom, 8)
 
                 // Control buttons
                 controlBar
@@ -108,7 +152,7 @@ struct VideoAnalysisView: View {
         .alert("How to Use", isPresented: $showHelp) {
             Button("Got it", role: .cancel) { }
         } message: {
-            Text("1. Tap Detect to analyze body poses\n2. Tap Person, scrub to a frame with the jumper, tap them. Add more marks on frames where tracking is wrong. Tap ✓ to confirm.\n3. Tap Bar to mark the bar ends (pinch to zoom), then enter the bar height\n4. Tap Analyze for technique feedback and measurements")
+            Text("1. Tap Person — scrub to a clear frame, tap the jumper. Add marks on frames where tracking is wrong. Tap ✓ to confirm.\n2. Tap Bar to mark the bar ends (pinch to zoom), then enter the bar height.\n3. Tap Analyze for technique feedback and measurements.")
         }
         .alert("Error", isPresented: $poseVM.showError) {
             Button("OK", role: .cancel) { }
@@ -118,8 +162,53 @@ struct VideoAnalysisView: View {
         .sheet(isPresented: $showBarHeightInput) {
             barHeightInputSheet
         }
+        .sheet(isPresented: $showDecisionSheet) {
+            if let decision = currentDecision,
+               let frame = playerVM.currentFrameImage {
+                let people = PersonThumbnailGenerator.generateThumbnails(
+                    from: frame,
+                    poses: decision.availablePeople
+                )
+                PersonSelectionSheet(
+                    detectedPeople: people,
+                    reason: decision.reason,
+                    onSelect: { selectedPerson in
+                        poseVM.handleDecisionSelection(selectedPerson, at: decision.frameIndex)
+                        moveToNextDecision()
+                    }
+                )
+            }
+        }
         .task {
+            if let stored = UserDefaults.standard.string(forKey: "poseEngine"), stored == "blazePose" {
+                PoseDetectionService.poseEngine = .blazePose
+            } else {
+                PoseDetectionService.poseEngine = .vision
+            }
             await playerVM.loadVideo(url: session.videoURL, session: session)
+        }
+        .onChange(of: poseVM.shouldNavigateToUncertain) { _, shouldNavigate in
+            if shouldNavigate && !poseVM.uncertainFrameIndices.isEmpty && !isSelectingPerson {
+                // Auto-navigate to first uncertain frame after a short delay
+                // so the "athlete selected" toast shows first
+                Task {
+                    try? await Task.sleep(for: .seconds(0.5))
+                    navigateToNextUncertain()
+                }
+            }
+        }
+        .onChange(of: poseVM.isProcessing) { oldValue, newValue in
+            // When processing completes, show first decision point
+            if oldValue && !newValue && poseVM.hasMoreDecisionPoints() {
+                Task {
+                    try? await Task.sleep(for: .seconds(0.3))
+                    if let decision = poseVM.getNextDecisionPoint() {
+                        currentDecision = decision
+                        await playerVM.seekToFrame(decision.frameIndex)
+                        showDecisionSheet = true
+                    }
+                }
+            }
         }
         .overlay {
             if poseVM.isProcessing {
@@ -175,6 +264,8 @@ struct VideoAnalysisView: View {
                                 barMarkingBanner
                             } else if isSelectingPerson {
                                 personSelectionBanner
+                            } else if poseVM.shouldNavigateToUncertain && !poseVM.uncertainFrameIndices.isEmpty {
+                                uncertainReviewBanner
                             }
                         }
                         .contentShape(Rectangle())
@@ -224,26 +315,26 @@ struct VideoAnalysisView: View {
 
     private func zoomAndTapGesture(in containerSize: CGSize) -> some Gesture {
         SimultaneousGesture(
-            // Pinch to zoom
-            MagnifyGesture()
-                .onChanged { value in
-                    let newScale = lastZoomScale * value.magnification
-                    zoomScale = min(max(newScale, 1.0), 5.0)
-                }
-                .onEnded { value in
-                    lastZoomScale = zoomScale
-                    if zoomScale < 1.05 {
-                        withAnimation(.easeOut(duration: 0.2)) {
-                            zoomScale = 1.0
-                            lastZoomScale = 1.0
-                            zoomOffset = .zero
-                            lastZoomOffset = .zero
-                        }
-                    }
-                },
             SimultaneousGesture(
-                // Drag to pan when zoomed
-                DragGesture()
+                // Pinch to zoom
+                MagnifyGesture()
+                    .onChanged { value in
+                        let newScale = lastZoomScale * value.magnification
+                        zoomScale = min(max(newScale, 1.0), 5.0)
+                    }
+                    .onEnded { value in
+                        lastZoomScale = zoomScale
+                        if zoomScale < 1.05 {
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                zoomScale = 1.0
+                                lastZoomScale = 1.0
+                                zoomOffset = .zero
+                                lastZoomOffset = .zero
+                            }
+                        }
+                    },
+                // Drag to pan when zoomed (minimum distance prevents interfering with taps)
+                DragGesture(minimumDistance: 10)
                     .onChanged { value in
                         if zoomScale > 1.05 {
                             zoomOffset = CGSize(
@@ -254,19 +345,19 @@ struct VideoAnalysisView: View {
                     }
                     .onEnded { value in
                         lastZoomOffset = zoomOffset
-                    },
-                // Tap gesture
-                SpatialTapGesture()
-                    .onEnded { value in
-                        // Convert tap location from zoomed space back to unzoomed space
-                        let tapInContainer = value.location
-                        let unzoomedTap = CGPoint(
-                            x: (tapInContainer.x - containerSize.width / 2 - zoomOffset.width) / zoomScale + containerSize.width / 2,
-                            y: (tapInContainer.y - containerSize.height / 2 - zoomOffset.height) / zoomScale + containerSize.height / 2
-                        )
-                        handleTap(at: unzoomedTap, in: containerSize)
                     }
-            )
+            ),
+            // Tap gesture — always active, highest priority for single taps
+            SpatialTapGesture()
+                .onEnded { value in
+                    // Convert tap location from zoomed space back to unzoomed space
+                    let tapInContainer = value.location
+                    let unzoomedTap = CGPoint(
+                        x: (tapInContainer.x - containerSize.width / 2 - zoomOffset.width) / zoomScale + containerSize.width / 2,
+                        y: (tapInContainer.y - containerSize.height / 2 - zoomOffset.height) / zoomScale + containerSize.height / 2
+                    )
+                    handleTap(at: unzoomedTap, in: containerSize)
+                }
         )
     }
 
@@ -274,43 +365,93 @@ struct VideoAnalysisView: View {
 
     @ViewBuilder
     private func barMarkingOverlay(in containerSize: CGSize) -> some View {
-        Canvas { context, size in
-            // Draw first point if set
+        ZStack {
+            // Canvas for the connecting line
+            Canvas { context, size in
+                if let p1 = barMarkPoint1, let p2 = barMarkPoint2 {
+                    var line = Path()
+                    line.move(to: p1)
+                    line.addLine(to: p2)
+                    context.stroke(
+                        line,
+                        with: .color(.red.opacity(0.8)),
+                        style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [6, 3])
+                    )
+                }
+            }
+            .allowsHitTesting(false)
+
+            // Draggable crosshair for point 1
+            // Offset: crosshair center sits above the finger so you can see it while dragging
             if let p1 = barMarkPoint1 {
-                drawCrosshairDot(context: &context, at: p1)
+                barCrosshairView(point: p1)
+                    .position(p1)
+                    .gesture(
+                        DragGesture(minimumDistance: 1)
+                            .onChanged { value in
+                                barMarkPoint1 = CGPoint(
+                                    x: value.location.x,
+                                    y: value.location.y - barDragFingerOffset
+                                )
+                            }
+                    )
             }
 
-            // Draw second point and connecting line
-            if let p1 = barMarkPoint1, let p2 = barMarkPoint2 {
-                // Line between points
-                var line = Path()
-                line.move(to: p1)
-                line.addLine(to: p2)
-                context.stroke(
-                    line,
-                    with: .color(.red),
-                    style: StrokeStyle(lineWidth: 3, lineCap: .round, dash: [8, 4])
-                )
-
-                drawCrosshairDot(context: &context, at: p2)
+            // Draggable crosshair for point 2
+            if let p2 = barMarkPoint2 {
+                barCrosshairView(point: p2)
+                    .position(p2)
+                    .gesture(
+                        DragGesture(minimumDistance: 1)
+                            .onChanged { value in
+                                barMarkPoint2 = CGPoint(
+                                    x: value.location.x,
+                                    y: value.location.y - barDragFingerOffset
+                                )
+                            }
+                    )
             }
         }
-        .allowsHitTesting(false)
     }
 
-    private func drawCrosshairDot(context: inout GraphicsContext, at point: CGPoint) {
-        let dotRect = CGRect(x: point.x - 4, y: point.y - 4, width: 8, height: 8)
-        context.fill(Path(ellipseIn: dotRect), with: .color(.cyan))
+    /// Semi-transparent crosshair with 1px lines and no filled dot
+    private func barCrosshairView(point: CGPoint) -> some View {
+        Canvas { context, size in
+            let center = CGPoint(x: size.width / 2, y: size.height / 2)
+            let armLength: CGFloat = 20
 
-        var hLine = Path()
-        hLine.move(to: CGPoint(x: point.x - 10, y: point.y))
-        hLine.addLine(to: CGPoint(x: point.x + 10, y: point.y))
-        context.stroke(hLine, with: .color(.cyan), style: StrokeStyle(lineWidth: 1.5))
+            // Outer circle — semi-transparent for visibility against any background
+            let circleRect = CGRect(x: center.x - 12, y: center.y - 12, width: 24, height: 24)
+            context.stroke(Path(ellipseIn: circleRect), with: .color(.cyan.opacity(0.6)), lineWidth: 1)
 
-        var vLine = Path()
-        vLine.move(to: CGPoint(x: point.x, y: point.y - 10))
-        vLine.addLine(to: CGPoint(x: point.x, y: point.y + 10))
-        context.stroke(vLine, with: .color(.cyan), style: StrokeStyle(lineWidth: 1.5))
+            // Horizontal crosshair — 1px
+            var hLine = Path()
+            hLine.move(to: CGPoint(x: center.x - armLength, y: center.y))
+            hLine.addLine(to: CGPoint(x: center.x - 5, y: center.y))
+            context.stroke(hLine, with: .color(.cyan.opacity(0.9)), lineWidth: 1)
+
+            var hLine2 = Path()
+            hLine2.move(to: CGPoint(x: center.x + 5, y: center.y))
+            hLine2.addLine(to: CGPoint(x: center.x + armLength, y: center.y))
+            context.stroke(hLine2, with: .color(.cyan.opacity(0.9)), lineWidth: 1)
+
+            // Vertical crosshair — 1px
+            var vLine = Path()
+            vLine.move(to: CGPoint(x: center.x, y: center.y - armLength))
+            vLine.addLine(to: CGPoint(x: center.x, y: center.y - 5))
+            context.stroke(vLine, with: .color(.cyan.opacity(0.9)), lineWidth: 1)
+
+            var vLine2 = Path()
+            vLine2.move(to: CGPoint(x: center.x, y: center.y + 5))
+            vLine2.addLine(to: CGPoint(x: center.x, y: center.y + armLength))
+            context.stroke(vLine2, with: .color(.cyan.opacity(0.9)), lineWidth: 1)
+
+            // Tiny center dot — 1px
+            let dotRect = CGRect(x: center.x - 0.5, y: center.y - 0.5, width: 1, height: 1)
+            context.fill(Path(ellipseIn: dotRect), with: .color(.cyan))
+        }
+        .frame(width: 50, height: 50)
+        .contentShape(Circle().size(width: 44, height: 44))
     }
 
     private var barMarkingBanner: some View {
@@ -440,28 +581,18 @@ struct VideoAnalysisView: View {
 
             // ── Sequential workflow buttons ──
 
-            // 1. Detect poses
-            Button {
-                Task { await poseVM.processVideo(url: session.videoURL, session: session) }
-            } label: {
-                Image(systemName: "figure.stand")
-                    .font(.callout)
-                    .frame(width: 36, height: 30)
-            }
-            .buttonStyle(.bordered)
-            .tint(poseVM.hasDetected ? .green : .jumpAccent)
-            .disabled(poseVM.isProcessing || poseVM.hasDetected)
-            .help("Detect")
-
-            // 2. Select person
+            // 1. Select person (auto-detects poses first if needed)
             Button {
                 if isSelectingPerson {
-                    // Already selecting — confirm person
-                    poseVM.confirmPerson()
+                    // Already selecting — just exit (confirm via banner ✓)
                     isSelectingPerson = false
                 } else {
-                    // Enter person selection mode
+                    // Enter person selection mode (works even after confirmation to add more annotations)
                     isSelectingPerson = true
+                    // Auto-detect if not yet done
+                    if !poseVM.hasDetected {
+                        Task { await poseVM.processVideo(url: session.videoURL, session: session) }
+                    }
                 }
             } label: {
                 Image(systemName: "person.crop.circle")
@@ -470,10 +601,10 @@ struct VideoAnalysisView: View {
             }
             .buttonStyle(.bordered)
             .tint(personButtonTint)
-            .disabled(!poseVM.hasDetected || poseVM.isProcessing || isMarkingBar)
+            .disabled(poseVM.isProcessing || isMarkingBar)
             .help("Person")
 
-            // 3. Mark bar
+            // 2. Mark bar
             Button {
                 startBarMarking()
             } label: {
@@ -486,7 +617,7 @@ struct VideoAnalysisView: View {
             .disabled(!poseVM.personConfirmed || poseVM.isProcessing || isMarkingBar || isSelectingPerson)
             .help("Bar")
 
-            // 4. Analyze
+            // 3. Analyze
             Button {
                 poseVM.runAnalysis(frameRate: session.frameRate)
                 if poseVM.analysisResult != nil {
@@ -510,7 +641,7 @@ struct VideoAnalysisView: View {
         } else if isSelectingPerson {
             return .cyan
         } else {
-            return .orange
+            return .jumpAccent
         }
     }
 
@@ -616,16 +747,109 @@ struct VideoAnalysisView: View {
         let count = poseVM.personAnnotations.count
         if count == 0 {
             return "Tap the jumper"
+        } else if poseVM.personConfirmed {
+            return "\(count) mark\(count == 1 ? "" : "s") — add corrections"
         } else {
             return "\(count) mark\(count == 1 ? "" : "s") — add more or confirm"
         }
     }
 
     private var personBannerSubtitle: String {
-        if poseVM.personAnnotations.isEmpty {
+        if poseVM.isProcessing {
+            return "Detecting poses… you can select after detection completes"
+        } else if !poseVM.hasDetected {
+            return "Waiting for pose detection…"
+        } else if poseVM.personAnnotations.isEmpty {
             return "Scrub to a frame showing the jumper, then tap them"
+        } else if poseVM.personConfirmed {
+            return "Scrub to frames where skeleton is wrong and tap the correct person"
         } else {
             return "Scrub to frames where tracking is wrong and tap the correct person"
+        }
+    }
+
+    // MARK: - Uncertain Frame Review Banner
+
+    private var uncertainReviewBanner: some View {
+        VStack {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Review tracking")
+                        .font(.subheadline.bold())
+                        .foregroundStyle(.white)
+                    if let progress = poseVM.uncertainReviewProgress {
+                        Text("Uncertain frame \(progress) — tap jumper if wrong")
+                            .font(.caption2)
+                            .foregroundStyle(.white.opacity(0.7))
+                    } else {
+                        Text("\(poseVM.uncertainFrameCount) frame\(poseVM.uncertainFrameCount == 1 ? "" : "s") need\(poseVM.uncertainFrameCount == 1 ? "s" : "") review")
+                            .font(.caption2)
+                            .foregroundStyle(.white.opacity(0.7))
+                    }
+                }
+
+                Spacer()
+
+                // Navigate to next uncertain frame
+                Button {
+                    navigateToNextUncertain()
+                } label: {
+                    HStack(spacing: 4) {
+                        Text("Next")
+                            .font(.caption.bold())
+                        Image(systemName: "arrow.right")
+                            .font(.caption)
+                    }
+                    .foregroundStyle(.orange)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(.orange.opacity(0.2))
+                    .clipShape(Capsule())
+                }
+
+                // Dismiss review mode
+                Button {
+                    poseVM.dismissUncertainReview()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(.white.opacity(0.6))
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(.ultraThinMaterial)
+
+            Spacer()
+        }
+    }
+
+    private func navigateToNextUncertain() {
+        if let frameIdx = poseVM.nextUncertainFrame() {
+            Task { await playerVM.seekToFrame(frameIdx) }
+            // Enter person selection mode so user can tap to correct
+            isSelectingPerson = true
+        } else {
+            // No more uncertain frames — dismiss review
+            poseVM.dismissUncertainReview()
+        }
+    }
+    
+    private func moveToNextDecision() {
+        poseVM.advanceToNextDecision()
+        
+        if let nextDecision = poseVM.getNextDecisionPoint() {
+            // Move to next decision
+            currentDecision = nextDecision
+            Task {
+                await playerVM.seekToFrame(nextDecision.frameIndex)
+                showDecisionSheet = true
+            }
+        } else {
+            // All decisions made!
+            showDecisionSheet = false
         }
     }
 
@@ -633,17 +857,14 @@ struct VideoAnalysisView: View {
 
     @ViewBuilder
     private var workflowHint: some View {
-        if !poseVM.hasDetected && !poseVM.isProcessing {
-            hintCard(icon: "figure.stand", title: "Step 1: Detect",
-                     detail: "Tap **Detect** to analyze body poses in the video.")
-        } else if poseVM.hasDetected && !poseVM.personConfirmed && !isSelectingPerson {
-            hintCard(icon: "person.crop.circle", title: "Step 2: Select Person",
+        if !poseVM.personConfirmed && !isSelectingPerson && !poseVM.isProcessing {
+            hintCard(icon: "person.crop.circle", title: "Step 1: Select Person",
                      detail: "Tap **Person** to identify the jumper. Scrub to a clear frame and tap them. Add more marks if tracking is off on other frames.")
         } else if poseVM.personConfirmed && poseVM.barDetection == nil && !isMarkingBar {
-            hintCard(icon: "ruler", title: "Step 3: Mark Bar",
+            hintCard(icon: "ruler", title: "Step 2: Mark Bar",
                      detail: "Tap **Bar** to mark the bar position. Pinch to zoom for precision, then tap each end of the bar.")
         } else if poseVM.personConfirmed && poseVM.barDetection != nil && poseVM.analysisResult == nil {
-            hintCard(icon: "waveform.path.ecg", title: "Step 4: Analyze",
+            hintCard(icon: "waveform.path.ecg", title: "Step 3: Analyze",
                      detail: "Tap **Analyze** to get technique feedback and jump measurements.")
         }
     }
@@ -674,8 +895,8 @@ struct VideoAnalysisView: View {
     private func handleTap(at location: CGPoint, in containerSize: CGSize) {
         if isMarkingBar {
             handleBarMarkTap(at: location, in: containerSize)
-        } else if isSelectingPerson && !poseVM.isProcessing {
-            // In person selection mode — add annotation
+        } else if isSelectingPerson && poseVM.hasDetected {
+            // In person selection mode — add annotation (works even during retrack, will queue)
             handlePersonSelectTap(at: location, in: containerSize)
         }
     }
@@ -929,6 +1150,14 @@ struct VideoAnalysisView: View {
         }
     }
 
+    // MARK: - Takeoff Triangle
+
+    private var takeoffTriangle: some View {
+        Image(systemName: "arrowtriangle.up.fill")
+            .font(.system(size: 8))
+            .foregroundStyle(.green)
+    }
+
     // MARK: - Helpers
 
     private var currentPose: BodyPose? {
@@ -976,3 +1205,4 @@ struct VideoAnalysisView: View {
         return String(format: "%d:%02d.%02d", mins, secs, frac)
     }
 }
+

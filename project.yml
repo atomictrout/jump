@@ -1,6 +1,6 @@
 name: Jump
 options:
-  bundleIdPrefix: com.jump
+  bundleIdPrefix: com.adamklein
   deploymentTarget:
     iOS: "17.0"
   xcodeVersion: "15.0"
@@ -21,7 +21,7 @@ targets:
           - "**/.DS_Store"
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.jump.Jump
+        PRODUCT_BUNDLE_IDENTIFIER: com.adamklein.jump
         INFOPLIST_GENERATION_MODE: GeneratedFile
         INFOPLIST_KEY_NSCameraUsageDescription: "Jump needs access to your camera to record videos for analysis."
         INFOPLIST_KEY_NSPhotoLibraryUsageDescription: "Jump needs access to your photo library to import videos for analysis."
@@ -38,6 +38,7 @@ targets:
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         SWIFT_EMIT_LOC_STRINGS: true
         CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: PGXA7T3QCU
     dependencies:
       - sdk: Vision.framework
       - sdk: AVFoundation.framework

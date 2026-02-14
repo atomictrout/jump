@@ -145,3 +145,125 @@ extension BodyPose {
         BodyPose(frameIndex: frameIndex, timestamp: timestamp, joints: [:])
     }
 }
+// MARK: - Person Thumbnail Generator
+
+import UIKit
+
+struct PersonThumbnailGenerator {
+    
+    struct DetectedPerson: Identifiable {
+        let id = UUID()
+        let pose: BodyPose
+        let thumbnail: UIImage
+        let confidence: Float
+    }
+    
+    static func generateThumbnails(from videoFrame: UIImage, poses: [BodyPose]) -> [DetectedPerson] {
+        var people: [DetectedPerson] = []
+        for pose in poses {
+            guard let bbox = pose.boundingBox else { continue }
+            if let croppedImage = cropImage(videoFrame, to: bbox) {
+                let confidence = calculateAverageConfidence(pose)
+                people.append(DetectedPerson(pose: pose, thumbnail: croppedImage, confidence: confidence))
+            }
+        }
+        return people.sorted { $0.confidence > $1.confidence }
+    }
+    
+    private static func cropImage(_ image: UIImage, to bbox: CGRect) -> UIImage? {
+        guard let cgImage = image.cgImage else { return nil }
+        let imageSize = CGSize(width: cgImage.width, height: cgImage.height)
+        let cropRect = CGRect(
+            x: bbox.minX * imageSize.width,
+            y: (1.0 - bbox.maxY) * imageSize.height,
+            width: bbox.width * imageSize.width,
+            height: bbox.height * imageSize.height
+        )
+        let padding = min(cropRect.width, cropRect.height) * 0.2
+        let paddedRect = cropRect.insetBy(dx: -padding, dy: -padding)
+        let clampedRect = CGRect(
+            x: max(0, paddedRect.minX),
+            y: max(0, paddedRect.minY),
+            width: min(paddedRect.width, imageSize.width - max(0, paddedRect.minX)),
+            height: min(paddedRect.height, imageSize.height - max(0, paddedRect.minY))
+        )
+        guard let cropped = cgImage.cropping(to: clampedRect) else { return nil }
+        return UIImage(cgImage: cropped, scale: image.scale, orientation: image.imageOrientation)
+    }
+    
+    private static func calculateAverageConfidence(_ pose: BodyPose) -> Float {
+        let confidences = pose.joints.values.map { $0.confidence }
+        guard !confidences.isEmpty else { return 0 }
+        return confidences.reduce(0, +) / Float(confidences.count)
+    }
+}
+
+// MARK: - Tracking Correction Manager
+
+import SwiftUI
+
+@Observable
+class TrackingCorrectionManager {
+    enum FrameStatus {
+        case autoTracked(confidence: CGFloat)
+        case userConfirmed
+        case needsReview
+        case incorrect
+        case noAthlete
+        case empty
+    }
+    
+    struct Issue: Identifiable {
+        let id = UUID()
+        let frameIndex: Int
+        let type: IssueType
+        enum IssueType {
+            case lowConfidence(CGFloat)
+            case potentialSwitch
+            case userMarkedWrong
+        }
+    }
+    
+    private(set) var frameStatuses: [Int: FrameStatus] = [:]
+    private(set) var issues: [Issue] = []
+    private(set) var currentIssueIndex: Int?
+    
+    var hasIssues: Bool { !issues.isEmpty }
+    var issueCount: Int { issues.count }
+    
+    func initialize(from trackingResult: SmartTrackingEngine.TrackingResult) {
+        frameStatuses.removeAll()
+        issues.removeAll()
+        currentIssueIndex = nil
+        for frameIndex in trackingResult.autoTrackedFrames {
+            frameStatuses[frameIndex] = .autoTracked(confidence: 0.9)
+        }
+        for decision in trackingResult.decisionPoints {
+            frameStatuses[decision.frameIndex] = .needsReview
+            issues.append(Issue(frameIndex: decision.frameIndex, type: .lowConfidence(0.5)))
+        }
+        issues.sort { $0.frameIndex < $1.frameIndex }
+    }
+    
+    func nextIssue() -> Int? {
+        guard let current = currentIssueIndex else {
+            currentIssueIndex = 0
+            return issues.first?.frameIndex
+        }
+        if current + 1 < issues.count {
+            currentIssueIndex = current + 1
+            return issues[current + 1].frameIndex
+        }
+        return nil
+    }
+    
+    func markFrameCorrect(_ frameIndex: Int) {
+        frameStatuses[frameIndex] = .userConfirmed
+        issues.removeAll { $0.frameIndex == frameIndex }
+    }
+    
+    func status(for frameIndex: Int) -> FrameStatus {
+        return frameStatuses[frameIndex] ?? .empty
+    }
+}
+

@@ -17,7 +17,11 @@
       "Bash(git -C /Users/adamklein/Development/jump push origin main)",
       "Bash(gh auth status:*)",
       "Bash(swift generate_icon.swift:*)",
-      "Bash(swift:*)"
+      "Bash(swift:*)",
+      "Bash(log show:*)",
+      "Bash(xcrun devicectl device info list:*)",
+      "Bash(xcrun devicectl device info list-devices:*)",
+      "Bash(xcrun devicectl device info:*)"
     ]
   }
 }
