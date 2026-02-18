@@ -27,6 +27,13 @@
 		9192F1021C162EA49E2EEF2F /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4F925A68C1A118D2B1FA29BD /* AVFoundation.framework */; };
 		9C33B3F82F3EB77300502EEA /* PoseDetectionProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C33B3F72F3EB77300502EEA /* PoseDetectionProvider.swift */; };
 		9C7E0B9E2F412CC100488FE6 /* .gitignore in Resources */ = {isa = PBXBuildFile; fileRef = 9C7E0B9D2F412CC100488FE6 /* .gitignore */; };
+		9C7E0BA02F4149C000488FE6 /* HYBRID_SELECTION_IMPLEMENTATION.md in Resources */ = {isa = PBXBuildFile; fileRef = 9C7E0B9F2F4149C000488FE6 /* HYBRID_SELECTION_IMPLEMENTATION.md */; };
+		9C7E0BA22F4149FD00488FE6 /* QUICK_START_GUIDE.md in Resources */ = {isa = PBXBuildFile; fileRef = 9C7E0BA12F4149FD00488FE6 /* QUICK_START_GUIDE.md */; };
+		9C7E0BA42F414A4800488FE6 /* IMPLEMENTATION_SUMMARY.md in Resources */ = {isa = PBXBuildFile; fileRef = 9C7E0BA32F414A4800488FE6 /* IMPLEMENTATION_SUMMARY.md */; };
+		9C7E0BA62F414AAA00488FE6 /* VISUAL_REFERENCE.md in Resources */ = {isa = PBXBuildFile; fileRef = 9C7E0BA52F414AAA00488FE6 /* VISUAL_REFERENCE.md */; };
+		9C7E0BA82F414B3700488FE6 /* MultiPersonOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C7E0BA72F414B3700488FE6 /* MultiPersonOverlay.swift */; };
+		9C7E0BAA2F4153D700488FE6 /* MULTI_PERSON_REVIEW_FEATURE.md in Resources */ = {isa = PBXBuildFile; fileRef = 9C7E0BA92F4153D700488FE6 /* MULTI_PERSON_REVIEW_FEATURE.md */; };
+		9C7E0BAC2F41557700488FE6 /* MULTI_PERSON_REVIEW_FEATURE 2.md in Resources */ = {isa = PBXBuildFile; fileRef = 9C7E0BAB2F41557700488FE6 /* MULTI_PERSON_REVIEW_FEATURE 2.md */; };
 		9C7F54C12F40F635000851C9 /* pose_landmarker_heavy.task in Resources */ = {isa = PBXBuildFile; fileRef = 9C7F54C02F40F635000851C9 /* pose_landmarker_heavy.task */; };
 		9C7F54C32F41104B000851C9 /* VISUAL_SELECTION_GUIDE.md in Resources */ = {isa = PBXBuildFile; fileRef = 9C7F54C22F41104B000851C9 /* VISUAL_SELECTION_GUIDE.md */; };
 		9C7F54C52F411236000851C9 /* NO_ATHLETE_FEATURE.md in Resources */ = {isa = PBXBuildFile; fileRef = 9C7F54C42F411236000851C9 /* NO_ATHLETE_FEATURE.md */; };
@@ -85,6 +92,13 @@
 		97EB474C4E65A9EAA49E8218 /* BarHeightParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarHeightParser.swift; sourceTree = "<group>"; };
 		9C33B3F72F3EB77300502EEA /* PoseDetectionProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PoseDetectionProvider.swift; sourceTree = "<group>"; };
 		9C7E0B9D2F412CC100488FE6 /* .gitignore */ = {isa = PBXFileReference; lastKnownFileType = text; path = .gitignore; sourceTree = "<group>"; };
+		9C7E0B9F2F4149C000488FE6 /* HYBRID_SELECTION_IMPLEMENTATION.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = HYBRID_SELECTION_IMPLEMENTATION.md; sourceTree = "<group>"; };
+		9C7E0BA12F4149FD00488FE6 /* QUICK_START_GUIDE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = QUICK_START_GUIDE.md; sourceTree = "<group>"; };
+		9C7E0BA32F414A4800488FE6 /* IMPLEMENTATION_SUMMARY.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = IMPLEMENTATION_SUMMARY.md; sourceTree = "<group>"; };
+		9C7E0BA52F414AAA00488FE6 /* VISUAL_REFERENCE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = VISUAL_REFERENCE.md; sourceTree = "<group>"; };
+		9C7E0BA72F414B3700488FE6 /* MultiPersonOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultiPersonOverlay.swift; sourceTree = "<group>"; };
+		9C7E0BA92F4153D700488FE6 /* MULTI_PERSON_REVIEW_FEATURE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = MULTI_PERSON_REVIEW_FEATURE.md; sourceTree = "<group>"; };
+		9C7E0BAB2F41557700488FE6 /* MULTI_PERSON_REVIEW_FEATURE 2.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "MULTI_PERSON_REVIEW_FEATURE 2.md"; sourceTree = "<group>"; };
 		9C7F54C02F40F635000851C9 /* pose_landmarker_heavy.task */ = {isa = PBXFileReference; lastKnownFileType = file; path = pose_landmarker_heavy.task; sourceTree = "<group>"; };
 		9C7F54C22F41104B000851C9 /* VISUAL_SELECTION_GUIDE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = VISUAL_SELECTION_GUIDE.md; sourceTree = "<group>"; };
 		9C7F54C42F411236000851C9 /* NO_ATHLETE_FEATURE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = NO_ATHLETE_FEATURE.md; sourceTree = "<group>"; };
@@ -145,6 +159,11 @@
 				FE2624596EE4B4AF851D383B /* JumpPhase.swift */,
 				C7E5F261262E89D7ACF0B71D /* JumpSession.swift */,
 				9C7F54CA2F4128C8000851C9 /* PersonSelectionSheetView.swift */,
+				9C7E0B9F2F4149C000488FE6 /* HYBRID_SELECTION_IMPLEMENTATION.md */,
+				9C7E0BA12F4149FD00488FE6 /* QUICK_START_GUIDE.md */,
+				9C7E0BA32F414A4800488FE6 /* IMPLEMENTATION_SUMMARY.md */,
+				9C7E0BA52F414AAA00488FE6 /* VISUAL_REFERENCE.md */,
+				9C7E0BA72F414B3700488FE6 /* MultiPersonOverlay.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -207,6 +226,8 @@
 				48D73A8AC057DCF1A4E8F6D8 /* VideoImportView.swift */,
 				9C33B3F72F3EB77300502EEA /* PoseDetectionProvider.swift */,
 				9CB8463C2F40F07D00F8D991 /* MediaPipeSetupGuide.md */,
+				9C7E0BA92F4153D700488FE6 /* MULTI_PERSON_REVIEW_FEATURE.md */,
+				9C7E0BAB2F41557700488FE6 /* MULTI_PERSON_REVIEW_FEATURE 2.md */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -323,13 +344,19 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				9C7E0BA42F414A4800488FE6 /* IMPLEMENTATION_SUMMARY.md in Resources */,
 				9C7E0B9E2F412CC100488FE6 /* .gitignore in Resources */,
 				9CB8463D2F40F07D00F8D991 /* MediaPipeSetupGuide.md in Resources */,
 				9C7F54C72F412788000851C9 /* IMPLEMENTATION_COMPLETE.md in Resources */,
+				9C7E0BA62F414AAA00488FE6 /* VISUAL_REFERENCE.md in Resources */,
+				9C7E0BAA2F4153D700488FE6 /* MULTI_PERSON_REVIEW_FEATURE.md in Resources */,
 				9C7F54C12F40F635000851C9 /* pose_landmarker_heavy.task in Resources */,
 				9C7F54C92F4127A7000851C9 /* INTEGRATION_GUIDE.md in Resources */,
 				9C7F54C32F41104B000851C9 /* VISUAL_SELECTION_GUIDE.md in Resources */,
 				2ABC1661F58B719D09C51F36 /* Assets.xcassets in Resources */,
+				9C7E0BA02F4149C000488FE6 /* HYBRID_SELECTION_IMPLEMENTATION.md in Resources */,
+				9C7E0BA22F4149FD00488FE6 /* QUICK_START_GUIDE.md in Resources */,
+				9C7E0BAC2F41557700488FE6 /* MULTI_PERSON_REVIEW_FEATURE 2.md in Resources */,
 				9C7F54C52F411236000851C9 /* NO_ATHLETE_FEATURE.md in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -387,6 +414,7 @@
 				D67C42F01F1D43B6AD2A6F57 /* JumpApp.swift in Sources */,
 				CA9A9E91E72EE3D1696CF0C8 /* JumpPhase.swift in Sources */,
 				EE15BF65404A7EA7CE8E0EEF /* JumpSession.swift in Sources */,
+				9C7E0BA82F414B3700488FE6 /* MultiPersonOverlay.swift in Sources */,
 				099A36EDAC2DE3ACF73A21DD /* PersonTracker.swift in Sources */,
 				0ED5E801B827999CAF25287F /* PoseDetectionService.swift in Sources */,
 				AAAA79A42AC7796043F6CADE /* PoseDetectionViewModel.swift in Sources */,

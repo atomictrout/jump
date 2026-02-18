@@ -332,11 +332,14 @@ struct PoseDetectionService {
     // MARK: - Multi-Person Detection
 
     /// Detect ALL people in a single frame, returning raw observations
+    /// NOTE: Vision's VNDetectHumanBodyPoseRequest is optimized for single-person detection.
+    /// For true multi-person scenarios, this uses a workaround strategy.
     static func detectAllPoses(
         in pixelBuffer: CVPixelBuffer,
         frameIndex: Int
     ) throws -> [VNHumanBodyPoseObservation] {
         let request = VNDetectHumanBodyPoseRequest()
+        
         let handler = VNImageRequestHandler(
             cvPixelBuffer: pixelBuffer,
             orientation: .up,
@@ -346,11 +349,128 @@ struct PoseDetectionService {
         do {
             try handler.perform([request])
         } catch {
-            print("Pose detection failed for frame \(frameIndex): \(error.localizedDescription)")
+            print("⚠️ Pose detection failed for frame \(frameIndex): \(error.localizedDescription)")
             return []
         }
 
-        return request.results ?? []
+        var allResults = request.results ?? []
+        
+        // 🔍 CRITICAL DEBUG: Always log for first 5 frames to diagnose issue
+        if frameIndex < 5 || frameIndex % 30 == 0 {
+            print("📊 Frame \(frameIndex): Vision returned \(allResults.count) pose(s)")
+            if allResults.isEmpty {
+                print("  ⚠️ NO POSES DETECTED - Video may have issues")
+            } else if allResults.count == 1 {
+                print("  ⚠️ ONLY 1 PERSON - Trying region-based detection...")
+            } else {
+                print("  ✅ Vision naturally detected \(allResults.count) people!")
+            }
+        }
+        
+        // WORKAROUND: Vision often returns only 1 observation even with multiple people.
+        // We can try detecting in different regions to find additional people.
+        // This is expensive but necessary for multi-person scenarios.
+        if allResults.count <= 1 {
+            // Try detecting in left and right halves
+            let additionalPoses = try detectInRegions(pixelBuffer: pixelBuffer, frameIndex: frameIndex)
+            
+            if frameIndex < 5 || frameIndex % 30 == 0 {
+                print("  🔍 Region detection found \(additionalPoses.count) additional pose(s)")
+            }
+            
+            // Merge results, removing duplicates based on bounding box overlap
+            for newPose in additionalPoses {
+                var isDuplicate = false
+                for existingPose in allResults {
+                    if areDuplicatePoses(existingPose, newPose) {
+                        isDuplicate = true
+                        break
+                    }
+                }
+                if !isDuplicate {
+                    allResults.append(newPose)
+                }
+            }
+            
+            if allResults.count > 1 && (frameIndex < 5 || frameIndex % 30 == 0) {
+                print("  ✅ FINAL: \(allResults.count) total pose(s) after merging")
+            }
+        }
+        
+        return allResults
+    }
+    
+    /// Helper: Detect poses in different regions of the frame
+    private static func detectInRegions(
+        pixelBuffer: CVPixelBuffer,
+        frameIndex: Int
+    ) throws -> [VNHumanBodyPoseObservation] {
+        var results: [VNHumanBodyPoseObservation] = []
+        
+        // Define regions to search (normalized coordinates)
+        let regions: [CGRect] = [
+            CGRect(x: 0.0, y: 0.0, width: 0.5, height: 1.0),   // Left half
+            CGRect(x: 0.5, y: 0.0, width: 0.5, height: 1.0)    // Right half
+        ]
+        
+        for (index, region) in regions.enumerated() {
+            let request = VNDetectHumanBodyPoseRequest()
+            request.regionOfInterest = region
+            
+            let handler = VNImageRequestHandler(
+                cvPixelBuffer: pixelBuffer,
+                orientation: .up,
+                options: [:]
+            )
+            
+            do {
+                try handler.perform([request])
+                
+                if let observations = request.results {
+                    if frameIndex < 5 {
+                        let regionName = index == 0 ? "LEFT" : "RIGHT"
+                        print("    🔍 \(regionName) region: found \(observations.count) pose(s)")
+                    }
+                    results.append(contentsOf: observations)
+                }
+            } catch {
+                if frameIndex < 5 {
+                    print("    ⚠️ Region \(index) detection failed: \(error)")
+                }
+            }
+        }
+        
+        return results
+    }
+    
+    /// Helper: Check if two pose observations are duplicates (same person)
+    private static func areDuplicatePoses(
+        _ pose1: VNHumanBodyPoseObservation,
+        _ pose2: VNHumanBodyPoseObservation
+    ) -> Bool {
+        // Get center points of poses
+        guard let joints1 = try? pose1.recognizedPoints(.all),
+              let joints2 = try? pose2.recognizedPoints(.all) else {
+            return false
+        }
+        
+        // Compare a few key joints to determine if it's the same person
+        let keyJoints: [VNHumanBodyPoseObservation.JointName] = [.nose, .neck, .root]
+        var matchCount = 0
+        
+        for joint in keyJoints {
+            if let point1 = joints1[joint], let point2 = joints2[joint],
+               point1.confidence > 0.3, point2.confidence > 0.3 {
+                let distance = sqrt(pow(point1.location.x - point2.location.x, 2) +
+                                  pow(point1.location.y - point2.location.y, 2))
+                if distance < 0.1 {  // Within 10% of image
+                    matchCount += 1
+                }
+            }
+        }
+        
+        // If 2+ key joints match, it's likely the same person
+        return matchCount >= 2
     }
 
     /// Dispatch method to detect all poses dynamically based on current poseEngine.
@@ -371,6 +491,7 @@ struct PoseDetectionService {
         timestamp: Double
     ) throws -> BodyPose {
         let request = VNDetectHumanBodyPoseRequest()
+        
         let handler = VNImageRequestHandler(
             cgImage: cgImage,
             orientation: .up,

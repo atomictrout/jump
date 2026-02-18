@@ -10,6 +10,11 @@ struct SkeletonOverlayView: View {
     var boneLineWidth: CGFloat = 3.0
     var jointRadius: CGFloat = 4.0
     var headRadius: CGFloat = 10.0
+    
+    // Multi-person support: override colors
+    var color: Color? = nil
+    var lineWidth: CGFloat? = nil
+    var opacity: Double = 1.0
 
     var body: some View {
         Canvas { context, size in
@@ -50,7 +55,8 @@ struct SkeletonOverlayView: View {
             guard (pose.joints[connection.from]?.confidence ?? 0) > 0.2,
                   (pose.joints[connection.to]?.confidence ?? 0) > 0.2 else { continue }
 
-            let color = color(for: connection.group)
+            let boneColor = color ?? defaultColor(for: connection.group)
+            let width = lineWidth ?? boneLineWidth
 
             var path = Path()
             path.move(to: fromPoint)
@@ -58,8 +64,8 @@ struct SkeletonOverlayView: View {
 
             context.stroke(
                 path,
-                with: .color(color),
-                style: StrokeStyle(lineWidth: boneLineWidth, lineCap: .round)
+                with: .color(boneColor.opacity(opacity)),
+                style: StrokeStyle(lineWidth: width, lineCap: .round)
             )
         }
     }
@@ -79,9 +85,10 @@ struct SkeletonOverlayView: View {
                 height: jointRadius * 2
             )
 
+            let jointColor = color ?? .skeletonJoint
             context.fill(
                 Path(ellipseIn: rect),
-                with: .color(.skeletonJoint)
+                with: .color(jointColor.opacity(opacity))
             )
         }
     }
@@ -100,9 +107,10 @@ struct SkeletonOverlayView: View {
             height: headRadius * 2
         )
 
+        let headColor = color ?? .skeletonHead
         context.stroke(
             Path(ellipseIn: rect),
-            with: .color(.skeletonHead),
+            with: .color(headColor.opacity(opacity)),
             style: StrokeStyle(lineWidth: 2)
         )
     }
@@ -153,7 +161,7 @@ struct SkeletonOverlayView: View {
 
     // MARK: - Colors
 
-    private func color(for group: BodyPose.SegmentGroup) -> Color {
+    private func defaultColor(for group: BodyPose.SegmentGroup) -> Color {
         switch group {
         case .torso: return .skeletonTorso
         case .leftLeg, .rightLeg: return .skeletonLegs

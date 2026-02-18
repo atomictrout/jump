@@ -21,7 +21,17 @@
       "Bash(log show:*)",
       "Bash(xcrun devicectl device info list:*)",
       "Bash(xcrun devicectl device info list-devices:*)",
-      "Bash(xcrun devicectl device info:*)"
+      "Bash(xcrun devicectl device info:*)",
+      "WebFetch(domain:acemethodcoaching.com)",
+      "WebFetch(domain:www.highjumphelp.com)",
+      "WebFetch(domain:onform.com)",
+      "WebFetch(domain:www.dartfish.com)",
+      "WebFetch(domain:sacspeed.com)",
+      "WebFetch(domain:coachathletics.com.au)",
+      "WebFetch(domain:exrx.net)",
+      "WebFetch(domain:wiki.has-motion.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:oregonstate.edu)"
     ]
   }
 }

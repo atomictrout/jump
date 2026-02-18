@@ -135,6 +135,18 @@ struct BodyPose: Sendable {
               let rightHip = joints[.rightHip]?.point else { return nil }
         return leftHip.midpoint(to: rightHip)
     }
+    
+    /// Average confidence across all detected joints
+    var averageConfidence: Float {
+        let confidences = joints.values.map { $0.confidence }
+        guard !confidences.isEmpty else { return 0 }
+        return confidences.reduce(0, +) / Float(confidences.count)
+    }
+    
+    /// Helper to get a specific joint point
+    func jointPoint(_ name: JointName) -> CGPoint? {
+        joints[name]?.point
+    }
 }
 
 // MARK: - Empty Pose
@@ -155,16 +167,30 @@ struct PersonThumbnailGenerator {
         let id = UUID()
         let pose: BodyPose
         let thumbnail: UIImage
+        let fullFrameWithHighlight: UIImage
+        let boundingBox: CGRect
         let confidence: Float
+        
+        /// Centroid of the person (for annotation point)
+        var centroid: CGPoint {
+            CGPoint(x: boundingBox.midX, y: boundingBox.midY)
+        }
     }
     
     static func generateThumbnails(from videoFrame: UIImage, poses: [BodyPose]) -> [DetectedPerson] {
         var people: [DetectedPerson] = []
         for pose in poses {
             guard let bbox = pose.boundingBox else { continue }
-            if let croppedImage = cropImage(videoFrame, to: bbox) {
+            if let croppedImage = cropImage(videoFrame, to: bbox),
+               let highlightedFrame = createHighlightedFrame(videoFrame, pose: pose, bbox: bbox) {
                 let confidence = calculateAverageConfidence(pose)
-                people.append(DetectedPerson(pose: pose, thumbnail: croppedImage, confidence: confidence))
+                people.append(DetectedPerson(
+                    pose: pose,
+                    thumbnail: croppedImage,
+                    fullFrameWithHighlight: highlightedFrame,
+                    boundingBox: bbox,
+                    confidence: confidence
+                ))
             }
         }
         return people.sorted { $0.confidence > $1.confidence }
@@ -179,7 +205,8 @@ struct PersonThumbnailGenerator {
             width: bbox.width * imageSize.width,
             height: bbox.height * imageSize.height
         )
-        let padding = min(cropRect.width, cropRect.height) * 0.2
+        // Increase padding for better context
+        let padding = min(cropRect.width, cropRect.height) * 0.4
         let paddedRect = cropRect.insetBy(dx: -padding, dy: -padding)
         let clampedRect = CGRect(
             x: max(0, paddedRect.minX),
@@ -189,6 +216,100 @@ struct PersonThumbnailGenerator {
         )
         guard let cropped = cgImage.cropping(to: clampedRect) else { return nil }
         return UIImage(cgImage: cropped, scale: image.scale, orientation: image.imageOrientation)
+    }
+    
+    private static func createHighlightedFrame(_ image: UIImage, pose: BodyPose, bbox: CGRect) -> UIImage? {
+        let renderer = UIGraphicsImageRenderer(size: image.size)
+        return renderer.image { context in
+            // Draw original image dimmed
+            image.draw(at: .zero, blendMode: .normal, alpha: 0.4)
+            
+            // Draw highlighted region at full brightness
+            guard let cgImage = image.cgImage else { return }
+            let imageSize = CGSize(width: cgImage.width, height: cgImage.height)
+            let highlightRect = CGRect(
+                x: bbox.minX * imageSize.width,
+                y: (1.0 - bbox.maxY) * imageSize.height,
+                width: bbox.width * imageSize.width,
+                height: bbox.height * imageSize.height
+            )
+            let padding = min(highlightRect.width, highlightRect.height) * 0.3
+            let paddedRect = highlightRect.insetBy(dx: -padding, dy: -padding)
+            
+            if let cropped = cgImage.cropping(to: paddedRect) {
+                let croppedImage = UIImage(cgImage: cropped)
+                croppedImage.draw(in: paddedRect)
+            }
+            
+            // Draw bounding box outline
+            context.cgContext.setStrokeColor(UIColor.cyan.cgColor)
+            context.cgContext.setLineWidth(4)
+            context.cgContext.stroke(paddedRect)
+            
+            // Draw skeleton overlay
+            drawSkeleton(pose: pose, in: context.cgContext, imageSize: imageSize)
+        }
+    }
+    
+    private static func drawSkeleton(pose: BodyPose, in context: CGContext, imageSize: CGSize) {
+        context.setStrokeColor(UIColor.cyan.cgColor)
+        context.setLineWidth(3)
+        context.setLineCap(.round)
+        
+        // Define skeleton connections
+        let connections: [(BodyPose.JointName, BodyPose.JointName)] = [
+            // Head to body
+            (.nose, .neck),
+            (.neck, .root),
+            
+            // Left arm
+            (.neck, .leftShoulder),
+            (.leftShoulder, .leftElbow),
+            (.leftElbow, .leftWrist),
+            
+            // Right arm
+            (.neck, .rightShoulder),
+            (.rightShoulder, .rightElbow),
+            (.rightElbow, .rightWrist),
+            
+            // Left leg
+            (.root, .leftHip),
+            (.leftHip, .leftKnee),
+            (.leftKnee, .leftAnkle),
+            
+            // Right leg
+            (.root, .rightHip),
+            (.rightHip, .rightKnee),
+            (.rightKnee, .rightAnkle)
+        ]
+        
+        for (start, end) in connections {
+            guard let startJoint = pose.joints[start],
+                  let endJoint = pose.joints[end],
+                  startJoint.confidence > 0.3,
+                  endJoint.confidence > 0.3 else { continue }
+            
+            let startPoint = visionToImagePoint(startJoint.point, imageSize: imageSize)
+            let endPoint = visionToImagePoint(endJoint.point, imageSize: imageSize)
+            
+            context.move(to: startPoint)
+            context.addLine(to: endPoint)
+        }
+        context.strokePath()
+        
+        // Draw joints as circles
+        context.setFillColor(UIColor.cyan.cgColor)
+        for joint in pose.joints.values where joint.confidence > 0.3 {
+            let point = visionToImagePoint(joint.point, imageSize: imageSize)
+            context.fillEllipse(in: CGRect(x: point.x - 6, y: point.y - 6, width: 12, height: 12))
+        }
+    }
+    
+    private static func visionToImagePoint(_ visionPoint: CGPoint, imageSize: CGSize) -> CGPoint {
+        return CGPoint(
+            x: visionPoint.x * imageSize.width,
+            y: (1 - visionPoint.y) * imageSize.height
+        )
     }
     
     private static func calculateAverageConfidence(_ pose: BodyPose) -> Float {

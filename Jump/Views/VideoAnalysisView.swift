@@ -2,48 +2,47 @@ import SwiftUI
 import AVFoundation
 import Foundation
 
+enum HeightUnit: String, CaseIterable {
+    case feetInches = "Feet & Inches"
+    case meters = "Meters"
+    case centimeters = "Centimeters"
+}
+
 struct VideoAnalysisView: View {
     let session: JumpSession
     @State private var playerVM = VideoPlayerViewModel()
     @State private var poseVM = PoseDetectionViewModel()
-    @State private var showAnalysisResults = false
-    @State private var showHelp = false
-
-    // Workflow state
-    @State private var isSelectingPerson = false
     
-    // Smart tracking decision points
-    @State private var showDecisionSheet = false
-    @State private var currentDecision: SmartTrackingEngine.DecisionPoint?
-
-    // Bar marking state
+    // UI State
+    @State private var isSelectingPerson = false
     @State private var isMarkingBar = false
-    @State private var barMarkPoint1: CGPoint?  // View coordinates (pre-zoom)
-    @State private var barMarkPoint2: CGPoint?  // View coordinates (pre-zoom)
+    @State private var showAnalysisResults = false
+    @State private var showBarHeightInput = false
     @State private var showBarConfirm = false
-
-    // Zoom state for bar marking
+    @State private var showThumbnailSheet = false
+    @State private var showDecisionSheet = false
+    
+    // Bar Marking
+    @State private var barMarkPoint1: CGPoint?
+    @State private var barMarkPoint2: CGPoint?
+    
+    // Bar Height Input
+    @State private var selectedUnit: HeightUnit = .meters
+    @State private var barHeightText = ""
+    @State private var feetText = ""
+    @State private var inchesText = ""
+    @State private var suggestedBarHeight: Double?
+    
+    // Zoom State
     @State private var zoomScale: CGFloat = 1.0
     @State private var lastZoomScale: CGFloat = 1.0
     @State private var zoomOffset: CGSize = .zero
     @State private var lastZoomOffset: CGSize = .zero
-
-    // Finger offset when dragging bar crosshairs — crosshair sits above finger so you can see it
-    private let barDragFingerOffset: CGFloat = 44
-
-    // Bar height input
-    @State private var showBarHeightInput = false
-    @State private var barHeightText = ""
-    @State private var suggestedBarHeight: Double?
-    @State private var selectedUnit: HeightUnit = .meters
-    @State private var feetText = ""
-    @State private var inchesText = ""
-
-    enum HeightUnit: String, CaseIterable {
-        case feetInches = "ft/in"
-        case meters = "m"
-        case centimeters = "cm"
-    }
+    
+    // Decision Points
+    @State private var currentDecision: SmartTrackingEngine.DecisionPoint?
+    
+    private let barDragFingerOffset: CGFloat = 50
 
     var body: some View {
         ZStack {
@@ -53,131 +52,51 @@ struct VideoAnalysisView: View {
                 // Video frame display
                 videoFrameView
                     .frame(maxWidth: .infinity)
-                    .frame(height: UIScreen.main.bounds.height * 0.5)
+                    .frame(height: UIScreen.main.bounds.height * 0.7)
                     .clipped()
 
-                // Frame info bar
-                frameInfoBar
+                // Scrubber only
+                FrameScrubberView(viewModel: playerVM)
+                    .frame(height: 56)
                     .padding(.horizontal)
-                    .padding(.vertical, 8)
-
-                // Scrubber with annotation + uncertain frame markers
-                ZStack(alignment: .top) {
-                    FrameScrubberView(viewModel: playerVM)
-
-                    GeometryReader { geo in
-                        // Person annotation markers (cyan dots)
-                        ForEach(poseVM.personAnnotations.indices, id: \.self) { idx in
-                            let ann = poseVM.personAnnotations[idx]
-                            let xPos = playerVM.totalFrames > 1
-                                ? geo.size.width * CGFloat(ann.frame) / CGFloat(playerVM.totalFrames - 1)
-                                : 0
-                            Circle()
-                                .fill(Color.cyan)
-                                .frame(width: 6, height: 6)
-                                .position(x: xPos, y: 3)
-                        }
-
-                        // Uncertain frame markers (orange dots)
-                        ForEach(poseVM.uncertainFrameIndices, id: \.self) { frameIdx in
-                            let xPos = playerVM.totalFrames > 1
-                                ? geo.size.width * CGFloat(frameIdx) / CGFloat(playerVM.totalFrames - 1)
-                                : 0
-                            Circle()
-                                .fill(Color.orange)
-                                .frame(width: 6, height: 6)
-                                .position(x: xPos, y: 3)
-                        }
-
-                        // Takeoff frame marker (green triangle)
-                        if let takeoffFrame = poseVM.takeoffFrameIndex, playerVM.totalFrames > 1 {
-                            let xPos = geo.size.width * CGFloat(takeoffFrame) / CGFloat(playerVM.totalFrames - 1)
-                            takeoffTriangle
-                                .position(x: xPos, y: 3)
-                        }
-                    }
-                    .allowsHitTesting(false)
-                }
-                .frame(height: 56)
-                .padding(.horizontal)
-                .padding(.bottom, 8)
+                    .padding(.bottom, 8)
 
                 // Control buttons
                 controlBar
                     .padding(.horizontal)
-                    .padding(.bottom, 8)
-
+                    .padding(.bottom, 12)
+                
                 // Workflow hint
                 workflowHint
                     .padding(.horizontal)
-                    .padding(.top, 4)
+                    .padding(.bottom, 8)
 
                 Spacer()
-            }
-
-            // "Athlete selected" toast
-            if poseVM.showPersonSelected {
-                VStack {
-                    Spacer()
-                    HStack(spacing: 8) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                        Text("Athlete selected")
-                            .font(.subheadline.bold())
-                            .foregroundStyle(.white)
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 12)
-                    .background(.ultraThinMaterial)
-                    .clipShape(Capsule())
-                    .padding(.bottom, 120)
-                }
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-                .animation(.easeInOut(duration: 0.3), value: poseVM.showPersonSelected)
             }
         }
         .navigationTitle("Analysis")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            // 🔧 DEBUG: Re-detection button
+            ToolbarItem(placement: .navigationBarTrailing) {
                 Button {
-                    showHelp = true
+                    Task {
+                        await poseVM.detectAllPeople(url: session.videoURL, session: session)
+                    }
                 } label: {
-                    Image(systemName: "questionmark.circle")
-                        .foregroundStyle(.jumpSubtle)
+                    Image(systemName: "arrow.clockwise")
+                        .foregroundStyle(.cyan)
                 }
             }
         }
-        .alert("How to Use", isPresented: $showHelp) {
-            Button("Got it", role: .cancel) { }
-        } message: {
-            Text("1. Tap Person — scrub to a clear frame, tap the jumper. Add marks on frames where tracking is wrong. Tap ✓ to confirm.\n2. Tap Bar to mark the bar ends (pinch to zoom), then enter the bar height.\n3. Tap Analyze for technique feedback and measurements.")
-        }
-        .alert("Error", isPresented: $poseVM.showError) {
+        .alert("Error", isPresented: Binding(
+            get: { poseVM.showError },
+            set: { poseVM.showError = $0 }
+        )) {
             Button("OK", role: .cancel) { }
         } message: {
             Text(poseVM.errorMessage ?? "An unknown error occurred.")
-        }
-        .sheet(isPresented: $showBarHeightInput) {
-            barHeightInputSheet
-        }
-        .sheet(isPresented: $showDecisionSheet) {
-            if let decision = currentDecision,
-               let frame = playerVM.currentFrameImage {
-                let people = PersonThumbnailGenerator.generateThumbnails(
-                    from: frame,
-                    poses: decision.availablePeople
-                )
-                PersonSelectionSheet(
-                    detectedPeople: people,
-                    reason: decision.reason,
-                    onSelect: { selectedPerson in
-                        poseVM.handleDecisionSelection(selectedPerson, at: decision.frameIndex)
-                        moveToNextDecision()
-                    }
-                )
-            }
         }
         .task {
             if let stored = UserDefaults.standard.string(forKey: "poseEngine"), stored == "blazePose" {
@@ -186,45 +105,17 @@ struct VideoAnalysisView: View {
                 PoseDetectionService.poseEngine = .vision
             }
             await playerVM.loadVideo(url: session.videoURL, session: session)
-        }
-        .onChange(of: poseVM.shouldNavigateToUncertain) { _, shouldNavigate in
-            if shouldNavigate && !poseVM.uncertainFrameIndices.isEmpty && !isSelectingPerson {
-                // Auto-navigate to first uncertain frame after a short delay
-                // so the "athlete selected" toast shows first
-                Task {
-                    try? await Task.sleep(for: .seconds(0.5))
-                    navigateToNextUncertain()
-                }
-            }
-        }
-        .onChange(of: poseVM.isProcessing) { oldValue, newValue in
-            // When processing completes, show first decision point
-            if oldValue && !newValue && poseVM.hasMoreDecisionPoints() {
-                Task {
-                    try? await Task.sleep(for: .seconds(0.3))
-                    if let decision = poseVM.getNextDecisionPoint() {
-                        currentDecision = decision
-                        await playerVM.seekToFrame(decision.frameIndex)
-                        showDecisionSheet = true
-                    }
-                }
-            }
+            // Auto-start pose detection - detect ALL people without tracking
+            await poseVM.detectAllPeople(url: session.videoURL, session: session)
         }
         .overlay {
             if poseVM.isProcessing {
                 processingOverlay
             }
         }
-        .sheet(isPresented: $showAnalysisResults) {
-            if let result = poseVM.analysisResult {
-                AnalysisResultsView(
-                    result: result,
-                    session: session,
-                    onJumpToFrame: { frame in
-                        showAnalysisResults = false
-                        Task { await playerVM.seekToFrame(frame) }
-                    }
-                )
+        .overlay {
+            if isSelectingPerson {
+                personSelectionBanner
             }
         }
     }
@@ -241,123 +132,83 @@ struct VideoAnalysisView: View {
                         .resizable()
                         .aspectRatio(contentMode: .fit)
                         .frame(width: geo.size.width, height: geo.size.height)
+                        .contentShape(Rectangle())  // Make entire image tappable
+                        .onTapGesture { location in
+                            if isSelectingPerson {
+                                handleTap(at: location, in: geo.size)
+                            }
+                        }
                         .overlay {
-                            // Skeleton overlay
-                            if let pose = currentPose {
-                                SkeletonOverlayView(
-                                    pose: pose,
+                            // Always show ALL detected people with numbers
+                            let allPoses = poseVM.getAllPosesAtFrame(playerVM.currentFrameIndex)
+                            if !allPoses.isEmpty && poseVM.hasDetected {
+                                AllPeopleReviewOverlay(
+                                    allPoses: allPoses,
+                                    trackedPersonIndex: poseVM.currentlyTrackedPersonIndex(at: playerVM.currentFrameIndex),
                                     viewSize: fittedVideoSize(in: geo.size),
                                     offset: fittedVideoOffset(in: geo.size),
-                                    barDetection: poseVM.barDetection
+                                    onSelectPerson: isSelectingPerson ? { selectedPose in
+                                        // User tapped a skeleton - select that specific pose
+                                        poseVM.selectSpecificPose(selectedPose, at: playerVM.currentFrameIndex)
+                                    } : nil
                                 )
                             }
+                            
+                            // Tracking Status HUD
+                            trackingStatusHUD
+                                .allowsHitTesting(false)  // Don't intercept taps
                         }
-                        .overlay {
-                            // Bar marking dots and preview line
-                            barMarkingOverlay(in: geo.size)
-                        }
-                        .scaleEffect(zoomScale)
-                        .offset(zoomOffset)
-                        .overlay {
-                            // Instruction banners (on top of zoom)
-                            if isMarkingBar {
-                                barMarkingBanner
-                            } else if isSelectingPerson {
-                                personSelectionBanner
-                            } else if poseVM.shouldNavigateToUncertain && !poseVM.uncertainFrameIndices.isEmpty {
-                                uncertainReviewBanner
-                            }
-                        }
-                        .contentShape(Rectangle())
-                        .gesture(zoomAndTapGesture(in: geo.size))
-                }
-
-                // Zoom indicator
-                if zoomScale > 1.05 {
-                    VStack {
-                        Spacer()
-                        HStack {
-                            Text(String(format: "%.1fx", zoomScale))
-                                .font(.caption2.bold())
-                                .foregroundStyle(.white.opacity(0.7))
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(.black.opacity(0.5))
-                                .clipShape(Capsule())
-
-                            Spacer()
-
-                            Button {
-                                withAnimation(.easeOut(duration: 0.2)) {
-                                    zoomScale = 1.0
-                                    lastZoomScale = 1.0
-                                    zoomOffset = .zero
-                                    lastZoomOffset = .zero
-                                }
-                            } label: {
-                                Image(systemName: "arrow.down.right.and.arrow.up.left")
-                                    .font(.caption2.bold())
-                                    .foregroundStyle(.white.opacity(0.7))
-                                    .padding(6)
-                                    .background(.black.opacity(0.5))
-                                    .clipShape(Circle())
-                            }
-                        }
-                        .padding(.horizontal, 8)
-                        .padding(.bottom, 4)
-                    }
                 }
             }
         }
     }
 
-    // MARK: - Gestures
+    // MARK: - Processing Overlay
 
-    private func zoomAndTapGesture(in containerSize: CGSize) -> some Gesture {
-        SimultaneousGesture(
-            SimultaneousGesture(
-                // Pinch to zoom
-                MagnifyGesture()
-                    .onChanged { value in
-                        let newScale = lastZoomScale * value.magnification
-                        zoomScale = min(max(newScale, 1.0), 5.0)
-                    }
-                    .onEnded { value in
-                        lastZoomScale = zoomScale
-                        if zoomScale < 1.05 {
-                            withAnimation(.easeOut(duration: 0.2)) {
-                                zoomScale = 1.0
-                                lastZoomScale = 1.0
-                                zoomOffset = .zero
-                                lastZoomOffset = .zero
-                            }
-                        }
-                    },
-                // Drag to pan when zoomed (minimum distance prevents interfering with taps)
-                DragGesture(minimumDistance: 10)
-                    .onChanged { value in
-                        if zoomScale > 1.05 {
-                            zoomOffset = CGSize(
-                                width: lastZoomOffset.width + value.translation.width,
-                                height: lastZoomOffset.height + value.translation.height
-                            )
-                        }
-                    }
-                    .onEnded { value in
-                        lastZoomOffset = zoomOffset
-                    }
-            ),
-            // Tap gesture — always active, highest priority for single taps
-            SpatialTapGesture()
-                .onEnded { value in
-                    // Convert tap location from zoomed space back to unzoomed space
-                    let tapInContainer = value.location
-                    let unzoomedTap = CGPoint(
-                        x: (tapInContainer.x - containerSize.width / 2 - zoomOffset.width) / zoomScale + containerSize.width / 2,
-                        y: (tapInContainer.y - containerSize.height / 2 - zoomOffset.height) / zoomScale + containerSize.height / 2
-                    )
-                    handleTap(at: unzoomedTap, in: containerSize)
+    private var processingOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.6).ignoresSafeArea()
+
+            VStack(spacing: 20) {
+                ProgressView(value: poseVM.progress) {
+                    Text("Detecting poses...")
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                } currentValueLabel: {
+                    Text("\(Int(poseVM.progress * 100))%")
+                        .font(.system(.title2, design: .monospaced).bold())
+                        .foregroundStyle(.jumpAccent)
                 }
+                .tint(.jumpAccent)
+                .frame(width: 200)
+            }
+            .padding(40)
+            .background(.ultraThinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 20))
+        }
+    }
+    
+    // MARK: - Helpers
+    
+    private func fittedVideoSize(in containerSize: CGSize) -> CGSize {
+        guard session.naturalSize != .zero else { return containerSize }
+        let videoAspect = session.naturalSize.width / session.naturalSize.height
+        let containerAspect = containerSize.width / containerSize.height
+
+        if videoAspect > containerAspect {
+            let height = containerSize.width / videoAspect
+            return CGSize(width: containerSize.width, height: height)
+        } else {
+            let width = containerSize.height * videoAspect
+            return CGSize(width: width, height: containerSize.height)
+        }
+    }
+
+    private func fittedVideoOffset(in containerSize: CGSize) -> CGPoint {
+        let fitted = fittedVideoSize(in: containerSize)
+        return CGPoint(
+            x: (containerSize.width - fitted.width) / 2,
+            y: (containerSize.height - fitted.height) / 2
         )
     }
 
@@ -550,35 +401,6 @@ struct VideoAnalysisView: View {
 
     private var controlBar: some View {
         HStack(spacing: 10) {
-            // Step backward
-            Button {
-                Task { await playerVM.stepBackward() }
-            } label: {
-                Image(systemName: "backward.frame.fill")
-                    .font(.body)
-            }
-            .foregroundStyle(.white)
-
-            // Play/Pause
-            Button {
-                playerVM.togglePlayback()
-            } label: {
-                Image(systemName: playerVM.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                    .font(.title2)
-            }
-            .foregroundStyle(.jumpAccent)
-
-            // Step forward
-            Button {
-                Task { await playerVM.stepForward() }
-            } label: {
-                Image(systemName: "forward.frame.fill")
-                    .font(.body)
-            }
-            .foregroundStyle(.white)
-
-            Spacer()
-
             // ── Sequential workflow buttons ──
 
             // 1. Select person (auto-detects poses first if needed)
@@ -595,27 +417,33 @@ struct VideoAnalysisView: View {
                     }
                 }
             } label: {
-                Image(systemName: "person.crop.circle")
-                    .font(.callout)
-                    .frame(width: 36, height: 30)
+                VStack(spacing: 2) {
+                    Image(systemName: "person.crop.circle")
+                        .font(.title3)
+                    Text("Person")
+                        .font(.caption2)
+                }
+                .frame(minWidth: 70)
             }
             .buttonStyle(.bordered)
             .tint(personButtonTint)
             .disabled(poseVM.isProcessing || isMarkingBar)
-            .help("Person")
 
             // 2. Mark bar
             Button {
                 startBarMarking()
             } label: {
-                Image(systemName: "ruler")
-                    .font(.callout)
-                    .frame(width: 36, height: 30)
+                VStack(spacing: 2) {
+                    Image(systemName: "ruler")
+                        .font(.title3)
+                    Text("Bar")
+                        .font(.caption2)
+                }
+                .frame(minWidth: 70)
             }
             .buttonStyle(.bordered)
             .tint(barButtonTint)
             .disabled(!poseVM.personConfirmed || poseVM.isProcessing || isMarkingBar || isSelectingPerson)
-            .help("Bar")
 
             // 3. Analyze
             Button {
@@ -624,14 +452,17 @@ struct VideoAnalysisView: View {
                     showAnalysisResults = true
                 }
             } label: {
-                Image(systemName: "waveform.path.ecg")
-                    .font(.callout)
-                    .frame(width: 36, height: 30)
+                VStack(spacing: 2) {
+                    Image(systemName: "waveform.path.ecg")
+                        .font(.title3)
+                    Text("Analyze")
+                        .font(.caption2)
+                }
+                .frame(minWidth: 70)
             }
             .buttonStyle(.borderedProminent)
             .tint(.jumpSecondary)
             .disabled(!poseVM.personConfirmed || poseVM.barDetection == nil || poseVM.isProcessing || isSelectingPerson || isMarkingBar)
-            .help("Analyze")
         }
     }
 
@@ -653,118 +484,32 @@ struct VideoAnalysisView: View {
         }
     }
 
-    // MARK: - Processing Overlay
-
-    private var processingOverlay: some View {
-        ZStack {
-            Color.black.opacity(0.6).ignoresSafeArea()
-
-            VStack(spacing: 20) {
-                ProgressView(value: poseVM.progress) {
-                    Text("Detecting poses...")
-                        .font(.headline)
-                        .foregroundStyle(.white)
-                } currentValueLabel: {
-                    Text("\(Int(poseVM.progress * 100))%")
-                        .font(.system(.title2, design: .monospaced).bold())
-                        .foregroundStyle(.jumpAccent)
-                }
-                .tint(.jumpAccent)
-                .frame(width: 200)
-            }
-            .padding(40)
-            .background(.ultraThinMaterial)
-            .clipShape(RoundedRectangle(cornerRadius: 20))
-        }
-    }
-
     // MARK: - Person Selection Banner
 
     private var personSelectionBanner: some View {
         VStack {
-            HStack(spacing: 8) {
-                Image(systemName: "person.crop.circle.badge.plus")
-                    .foregroundStyle(.cyan)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(personBannerTitle)
-                        .font(.subheadline.bold())
-                        .foregroundStyle(.white)
-                    Text(personBannerSubtitle)
-                        .font(.caption2)
-                        .foregroundStyle(.white.opacity(0.7))
-                }
-
-                Spacer()
-
-                if !poseVM.personAnnotations.isEmpty {
-                    // Undo last annotation
-                    Button {
-                        poseVM.undoLastAnnotation()
-                    } label: {
-                        Image(systemName: "arrow.uturn.backward.circle.fill")
-                            .font(.title3)
-                            .foregroundStyle(.orange)
-                    }
-
-                    // Clear all annotations
-                    Button {
-                        poseVM.clearPersonAnnotations()
-                    } label: {
-                        Image(systemName: "trash.circle.fill")
-                            .font(.title3)
-                            .foregroundStyle(.red)
-                    }
-
-                    // Confirm
-                    Button {
-                        poseVM.confirmPerson()
-                        isSelectingPerson = false
-                    } label: {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.title3)
-                            .foregroundStyle(.green)
-                    }
-                }
-
-                // Cancel
-                Button {
-                    isSelectingPerson = false
-                } label: {
-                    Text("Cancel")
-                        .font(.caption.bold())
-                        .foregroundStyle(.red)
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(.ultraThinMaterial)
-
             Spacer()
-        }
-    }
-
-    private var personBannerTitle: String {
-        let count = poseVM.personAnnotations.count
-        if count == 0 {
-            return "Tap the jumper"
-        } else if poseVM.personConfirmed {
-            return "\(count) mark\(count == 1 ? "" : "s") — add corrections"
-        } else {
-            return "\(count) mark\(count == 1 ? "" : "s") — add more or confirm"
-        }
-    }
-
-    private var personBannerSubtitle: String {
-        if poseVM.isProcessing {
-            return "Detecting poses… you can select after detection completes"
-        } else if !poseVM.hasDetected {
-            return "Waiting for pose detection…"
-        } else if poseVM.personAnnotations.isEmpty {
-            return "Scrub to a frame showing the jumper, then tap them"
-        } else if poseVM.personConfirmed {
-            return "Scrub to frames where skeleton is wrong and tap the correct person"
-        } else {
-            return "Scrub to frames where tracking is wrong and tap the correct person"
+            
+            let allPoses = poseVM.getAllPosesAtFrame(playerVM.currentFrameIndex)
+            SelectionConfirmationBar(
+                selectedCount: poseVM.personAnnotations.count,
+                hasDetections: !allPoses.isEmpty,
+                onConfirm: {
+                    poseVM.confirmPerson()
+                    isSelectingPerson = false
+                },
+                onShowThumbnails: {
+                    showThumbnailSheet = true
+                },
+                onNoAthlete: {
+                    // Mark current frame as "no athlete present"
+                    // Use a special coordinate (-1, -1) to indicate "no athlete"
+                    poseVM.selectPerson(at: CGPoint(x: -1, y: -1), frameIndex: playerVM.currentFrameIndex)
+                },
+                onCancel: {
+                    isSelectingPerson = false
+                }
+            )
         }
     }
 
@@ -859,13 +604,17 @@ struct VideoAnalysisView: View {
     private var workflowHint: some View {
         if !poseVM.personConfirmed && !isSelectingPerson && !poseVM.isProcessing {
             hintCard(icon: "person.crop.circle", title: "Step 1: Select Person",
-                     detail: "Tap **Person** to identify the jumper. Scrub to a clear frame and tap them. Add more marks if tracking is off on other frames.")
+                     detail: "Tap **Person** to identify the jumper. Scrub to a clear frame and tap their skeleton or tap background.")
         } else if poseVM.personConfirmed && poseVM.barDetection == nil && !isMarkingBar {
             hintCard(icon: "ruler", title: "Step 2: Mark Bar",
                      detail: "Tap **Bar** to mark the bar position. Pinch to zoom for precision, then tap each end of the bar.")
         } else if poseVM.personConfirmed && poseVM.barDetection != nil && poseVM.analysisResult == nil {
             hintCard(icon: "waveform.path.ecg", title: "Step 3: Analyze",
                      detail: "Tap **Analyze** to get technique feedback and jump measurements.")
+        } else if poseVM.personConfirmed && !isSelectingPerson && !isMarkingBar {
+            // Show hint about being able to add more annotations
+            hintCard(icon: "plus.circle", title: "Tip: Improve Tracking",
+                     detail: "Tap **Person** again to add more annotations on frames where tracking is incorrect. More annotations = better tracking!")
         }
     }
 
@@ -999,6 +748,31 @@ struct VideoAnalysisView: View {
     }
 
     // MARK: - Bar Height Input Sheet
+    
+    @ViewBuilder
+    private var decisionPointSheet: some View {
+        if let decision = currentDecision,
+           let cgImage = playerVM.currentFrameImage {
+            let uiImage = UIImage(cgImage: cgImage)
+            
+            // Get ALL poses at this frame, not just the decision point's availablePeople
+            // This ensures we show everyone, even if tracking lost the athlete
+            let allPosesAtFrame = poseVM.getAllPosesAtFrame(decision.frameIndex)
+            let people = PersonThumbnailGenerator.generateThumbnails(
+                from: uiImage,
+                poses: allPosesAtFrame
+            )
+            
+            PersonSelectionSheet(
+                detectedPeople: people,
+                reason: decision.reason,
+                onSelect: { selectedPerson in
+                    poseVM.handleDecisionSelection(selectedPerson, at: decision.frameIndex)
+                    moveToNextDecision()
+                }
+            )
+        }
+    }
 
     private var barHeightInputSheet: some View {
         NavigationStack {
@@ -1174,35 +948,74 @@ struct VideoAnalysisView: View {
         }?.phase
     }
 
-    private func fittedVideoSize(in containerSize: CGSize) -> CGSize {
-        guard session.naturalSize != .zero else { return containerSize }
-        let videoAspect = session.naturalSize.width / session.naturalSize.height
-        let containerAspect = containerSize.width / containerSize.height
-
-        if videoAspect > containerAspect {
-            let width = containerSize.width
-            let height = width / videoAspect
-            return CGSize(width: width, height: height)
-        } else {
-            let height = containerSize.height
-            let width = height * videoAspect
-            return CGSize(width: width, height: height)
-        }
-    }
-
-    private func fittedVideoOffset(in containerSize: CGSize) -> CGPoint {
-        let fitted = fittedVideoSize(in: containerSize)
-        return CGPoint(
-            x: (containerSize.width - fitted.width) / 2,
-            y: (containerSize.height - fitted.height) / 2
-        )
-    }
-
     private func formatTimestamp(_ seconds: Double) -> String {
         let mins = Int(seconds) / 60
         let secs = Int(seconds) % 60
         let frac = Int((seconds.truncatingRemainder(dividingBy: 1)) * 100)
         return String(format: "%d:%02d.%02d", mins, secs, frac)
+    }
+    
+    // MARK: - Tracking Status HUD
+    
+    /// Display current tracking status at the top of the video
+    private var trackingStatusHUD: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                let count = poseVM.getAllPosesAtFrame(playerVM.currentFrameIndex).count
+                let status = poseVM.trackingStatus
+                let trackedIndex = poseVM.currentlyTrackedPersonIndex(at: playerVM.currentFrameIndex)
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    // Main status
+                    HStack(spacing: 6) {
+                        Image(systemName: status.icon)
+                            .font(.caption)
+                        Text(status.displayText)
+                            .font(.caption.bold())
+                    }
+                    .foregroundStyle(.white)
+                    
+                    // Secondary info
+                    if count > 0 {
+                        HStack(spacing: 8) {
+                            Text("\(count) \(count == 1 ? "person" : "people")")
+                                .font(.caption2)
+                            
+                            if let tracked = trackedIndex {
+                                Text("Person #\(tracked + 1)")
+                                    .font(.caption2.bold())
+                                    .foregroundStyle(.green)
+                            } else if !poseVM.personAnnotations.isEmpty {
+                                Text("\(poseVM.personAnnotations.count) annotation\(poseVM.personAnnotations.count == 1 ? "" : "s")")
+                                    .font(.caption2)
+                                    .foregroundStyle(.cyan)
+                            }
+                        }
+                        .foregroundStyle(.white.opacity(0.9))
+                    }
+                    
+                    // Instruction hint
+                    if status == .noPerson && count > 0 {
+                        Text("Tap skeleton to select")
+                            .font(.caption2)
+                            .foregroundStyle(.white.opacity(0.7))
+                    } else if status == .badDetection {
+                        Text("Add more annotations")
+                            .font(.caption2)
+                            .foregroundStyle(.yellow)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(status.color.opacity(0.9))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                
+                Spacer()
+            }
+            .padding(12)
+            
+            Spacer()
+        }
     }
 }
 

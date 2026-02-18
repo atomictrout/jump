@@ -66,10 +66,10 @@ class BlazePoseDetectionProvider: PoseDetectionProvider {
         let options = PoseLandmarkerOptions()
         options.baseOptions.modelAssetPath = modelPath
         options.runningMode = .image  // Process single images/frames
-        options.numPoses = 2  // Detect up to 2 people (athlete + possible bystander)
-        options.minPoseDetectionConfidence = 0.5
-        options.minPosePresenceConfidence = 0.5
-        options.minTrackingConfidence = 0.5
+        options.numPoses = 3  // Detect up to 3 people (optimal for high jump scenarios)
+        options.minPoseDetectionConfidence = 0.2  // Very permissive - detect even low-confidence poses
+        options.minPosePresenceConfidence = 0.2   // Detect partially visible people
+        options.minTrackingConfidence = 0.3
         
         do {
             poseLandmarker = try PoseLandmarker(options: options)
@@ -93,6 +93,18 @@ class BlazePoseDetectionProvider: PoseDetectionProvider {
         // Detect poses
         let result = try poseLandmarker.detect(image: mpImage)
         
+        // 🔍 DEBUG LOGGING: Always log for first 5 frames
+        if frameIndex < 5 || frameIndex % 30 == 0 {
+            print("📊 [BlazePose] Frame \(frameIndex): Detected \(result.landmarks.count) pose(s)")
+            if result.landmarks.isEmpty {
+                print("  ⚠️ NO POSES DETECTED")
+            } else if result.landmarks.count == 1 {
+                print("  ⚠️ Only 1 person detected (config allows up to 3)")
+            } else {
+                print("  ✅ Multiple people detected: \(result.landmarks.count)")
+            }
+        }
+        
         // Convert each detected pose to BodyPose
         var poses: [BodyPose] = []
         for (index, landmarks) in result.landmarks.enumerated() {
@@ -104,6 +116,11 @@ class BlazePoseDetectionProvider: PoseDetectionProvider {
                     timestamp: 0
                 )
                 poses.append(pose)
+                
+                // 🔍 Extra detail for first few frames
+                if frameIndex < 5 {
+                    print("    Person \(index + 1): \(landmarks.count) landmarks, confidence: \(landmarks.first?.visibility ?? 0)")
+                }
             }
         }
         

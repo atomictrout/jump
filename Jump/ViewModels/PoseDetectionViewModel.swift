@@ -50,11 +50,112 @@ class PoseDetectionViewModel {
         storedObservations
     }
     
+    // MARK: - Tracking Status
+    
+    enum TrackingStatus {
+        case noDetection           // No poses detected yet
+        case noPerson             // Poses detected, but no athlete selected
+        case personTracked        // Athlete successfully tracked
+        case badDetection         // Athlete present but no pose detected for athlete
+        
+        var displayText: String {
+            switch self {
+            case .noDetection: return "No Detection"
+            case .noPerson: return "No Athlete Selected"
+            case .personTracked: return "Athlete Tracked"
+            case .badDetection: return "Bad Detection"
+            }
+        }
+        
+        var color: Color {
+            switch self {
+            case .noDetection: return .red
+            case .noPerson: return .orange
+            case .personTracked: return .green
+            case .badDetection: return .red
+            }
+        }
+        
+        var icon: String {
+            switch self {
+            case .noDetection: return "exclamationmark.triangle.fill"
+            case .noPerson: return "person.crop.circle.badge.questionmark"
+            case .personTracked: return "checkmark.circle.fill"
+            case .badDetection: return "exclamationmark.circle.fill"
+            }
+        }
+    }
+    
+    /// Current tracking status based on the state
+    var trackingStatus: TrackingStatus {
+        if !hasDetected {
+            return .noDetection
+        }
+        
+        if personAnnotations.isEmpty && !personConfirmed {
+            return .noPerson
+        }
+        
+        if personConfirmed || !personAnnotations.isEmpty {
+            // Check if we have good tracking data
+            let validPoseCount = poses.filter { $0.hasMinimumConfidence }.count
+            let totalFrames = storedObservations.count
+            
+            // If we have annotations but very few valid poses, it's bad detection
+            if totalFrames > 0 && Double(validPoseCount) / Double(totalFrames) < 0.3 {
+                return .badDetection
+            }
+            
+            return .personTracked
+        }
+        
+        return .noPerson
+    }
+    
     // MARK: - Smart Tracking
     
     var autoTrackingResult: SmartTrackingEngine.TrackingResult?
     var currentDecisionPointIndex: Int = 0
     var correctionManager: TrackingCorrectionManager?
+
+    @MainActor
+    func detectAllPeople(url: URL, session: JumpSession) async {
+        guard !isProcessing else { return }
+
+        // Check if pose detection is available (may fail on simulator)
+        if !PoseDetectionService.isAvailable {
+            errorMessage = "Pose detection is not available on this simulator. Please test on a physical iPhone (A12 chip or newer)."
+            showError = true
+            return
+        }
+
+        isProcessing = true
+        progress = 0.0
+        storedObservations = []
+
+        do {
+            // Collect all raw observations (all people per frame) on a background thread.
+            let allObs = try await Task.detached(priority: .userInitiated) {
+                try await PoseDetectionService.collectAllObservations(
+                    url: url,
+                    session: session
+                ) { prog in
+                    Task { @MainActor [weak self] in
+                        self?.progress = prog
+                    }
+                }
+            }.value
+            storedObservations = allObs
+            
+            // DON'T run tracking - just keep all raw observations
+
+        } catch {
+            errorMessage = "Pose detection failed: \(error.localizedDescription)"
+            showError = true
+        }
+
+        isProcessing = false
+    }
 
     @MainActor
     func processVideo(url: URL, session: JumpSession) async {
@@ -128,17 +229,26 @@ class PoseDetectionViewModel {
     /// Queues the annotation if a retrack is already in progress.
     @MainActor
     func addPersonAnnotation(at visionPoint: CGPoint, frameIndex: Int) {
-        guard !storedObservations.isEmpty else { return }
+        guard !storedObservations.isEmpty else { 
+            print("❌ No stored observations available")
+            return 
+        }
 
+        print("➕ Adding annotation at frame \(frameIndex), point: \(visionPoint)")
+        
         // Replace any existing annotation at same frame, otherwise add
         personAnnotations.removeAll { $0.frame == frameIndex }
         personAnnotations.append((frame: frameIndex, point: visionPoint))
         personAnnotations.sort { $0.frame < $1.frame }
+        
+        print("📝 Total annotations: \(personAnnotations.count)")
 
         // If already retracking, queue a new retrack after the current one finishes
         if isProcessing {
+            print("⏳ Already processing, queuing retrack")
             pendingRetrack = true
         } else {
+            print("🔄 Starting retrack from annotations")
             retrackFromAnnotations()
         }
     }
@@ -191,13 +301,38 @@ class PoseDetectionViewModel {
         return poses.first { $0.frameIndex == frameIndex }
     }
     
+    /// Get tracking confidence for current frame
+    /// Calculate average joint confidence as a proxy
+    func trackingConfidence(at frameIndex: Int) -> Double {
+        guard let trackedPose = getTrackedPose(at: frameIndex) else { return 0.0 }
+        
+        // Calculate average confidence from all joints
+        let jointConfidences = trackedPose.joints.values.map { Double($0.confidence) }
+        guard !jointConfidences.isEmpty else { return 0.0 }
+        
+        return jointConfidences.reduce(0.0, +) / Double(jointConfidences.count)
+    }
+    
+    /// Count of detected people at frame
+    func detectedPeopleCount(at frameIndex: Int) -> Int {
+        return getAllPosesForFrame(frameIndex).count
+    }
+    
     /// Select a specific pose from multiple detections
     /// This is called when user taps on a skeleton in multi-person view
     @MainActor
     func selectSpecificPose(_ selectedPose: BodyPose, at frameIndex: Int) {
+        print("🎯 selectSpecificPose called at frame \(frameIndex)")
+        
         // Find the centroid of the selected pose to use as annotation point
-        guard let bbox = selectedPose.boundingBox else { return }
+        guard let bbox = selectedPose.boundingBox else { 
+            print("❌ No bounding box for selected pose")
+            return 
+        }
         let annotationPoint = CGPoint(x: bbox.midX, y: bbox.midY)
+        
+        print("📍 Annotation point: \(annotationPoint)")
+        print("📦 Stored observations count: \(storedObservations.count)")
         
         // Add annotation at this frame with the selected person's position
         addPersonAnnotation(at: annotationPoint, frameIndex: frameIndex)
@@ -222,6 +357,42 @@ class PoseDetectionViewModel {
     }
     
     // MARK: - Smart Tracking Decision Handling
+    
+    /// Get all poses detected at a specific frame (all people, not just tracked)
+    func getAllPosesAtFrame(_ frameIndex: Int) -> [BodyPose] {
+        guard frameIndex < storedObservations.count else { return [] }
+        return storedObservations[frameIndex].observations
+    }
+    
+    /// Get the index of the currently tracked person at a given frame
+    /// Returns nil if no person is being tracked at this frame
+    func currentlyTrackedPersonIndex(at frameIndex: Int) -> Int? {
+        guard frameIndex < poses.count else { return nil }
+        let trackedPose = poses[frameIndex]
+        
+        // If no pose tracked at this frame, return nil
+        guard trackedPose.hasMinimumConfidence else { return nil }
+        
+        let allPoses = getAllPosesAtFrame(frameIndex)
+        
+        // Find which pose in allPoses matches the tracked pose
+        // Match by comparing center of mass
+        guard let trackedCenter = trackedPose.centerOfMass else { return nil }
+        
+        return allPoses.firstIndex { pose in
+            guard let center = pose.centerOfMass else { return false }
+            let distance = hypot(center.x - trackedCenter.x, center.y - trackedCenter.y)
+            return distance < 0.05 // Within 5% of frame
+        }
+    }
+    
+    /// Re-detect poses at a specific frame with fresh processing
+    @MainActor
+    func redetectFrame(_ frameIndex: Int, videoURL: URL) async {
+        // For now, just return all stored observations
+        // In future, could re-run detection with different parameters
+        // This is a placeholder for potential enhancement
+    }
     
     /// Handle user selection at a decision point
     @MainActor
