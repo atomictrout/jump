@@ -1,397 +1,140 @@
 import CoreGraphics
 import Foundation
 
+/// Core analysis engine that computes all biomechanical metrics,
+/// detects errors, and generates coaching recommendations.
 struct AnalysisEngine {
 
-    // MARK: - Main Analysis Entry Point
-
-    static func analyze(
-        poses: [BodyPose],
-        bar: BarDetectionResult?,
-        barHeightMeters: Double? = nil,
-        frameRate: Double
+    /// Run full analysis on a jump session.
+    func analyze(
+        session: JumpSession,
+        allFramePoses: [[BodyPose]],
+        assignments: [Int: FrameAssignment],
+        phases: [JumpPhase],
+        calibration: ScaleCalibration?,
+        sex: COMCalculator.Sex = .male
     ) -> AnalysisResult {
-        guard !poses.isEmpty else {
-            return AnalysisResult(
-                phases: [],
-                measurements: JumpMeasurements(),
-                errors: [],
-                recommendations: [
-                    Recommendation(
-                        id: UUID(),
-                        title: "No Pose Data",
-                        detail: "Process the video first to detect body poses.",
-                        relatedError: nil,
-                        priority: 1
-                    )
-                ]
-            )
-        }
+        // Extract athlete poses per frame
+        let athletePoses = extractAthletePoses(allFramePoses: allFramePoses, assignments: assignments)
 
-        // Sanity check: verify the tracked person actually jumped
-        if !validateJumpDetected(poses: poses) {
-            return AnalysisResult(
-                phases: [],
-                measurements: JumpMeasurements(),
-                errors: [],
-                recommendations: [
-                    Recommendation(
-                        id: UUID(),
-                        title: "No Jump Detected",
-                        detail: "The tracked person doesn't appear to jump. The skeleton may be on a bystander. Go back and re-select the correct jumper using the Person button — scrub to a frame where the athlete is clearly visible and tap them.",
-                        relatedError: nil,
-                        priority: 1
-                    )
-                ]
-            )
-        }
+        // Detect key frames
+        let classifier = PhaseClassifier()
+        let keyFrames = classifier.detectKeyFrames(poses: athletePoses, frameRate: session.frameRate)
 
-        // 1. Smooth pose data
-        let smoothedPoses = smoothPoses(poses)
+        // Compute COM per frame
+        let comPositions = computeCOMTrajectory(poses: athletePoses, sex: sex)
 
-        // 2. Find key frames
-        let takeoffFrame = findTakeoffFrame(poses: smoothedPoses)
-        let landingFrame = findLandingFrame(poses: smoothedPoses, after: takeoffFrame)
-        let penultimateFrame = findPenultimateStep(poses: smoothedPoses, before: takeoffFrame)
-        let peakFrame = findPeakFrame(poses: smoothedPoses, takeoff: takeoffFrame, landing: landingFrame)
-
-        // 3. Build phases
-        let phases = buildPhases(
-            totalFrames: poses.count,
-            penultimate: penultimateFrame,
-            takeoff: takeoffFrame,
-            landing: landingFrame
-        )
-
-        // 4. Compute measurements
+        // Compute measurements
         var measurements = computeMeasurements(
-            poses: smoothedPoses,
-            takeoffFrame: takeoffFrame,
-            landingFrame: landingFrame,
-            penultimateFrame: penultimateFrame,
-            peakFrame: peakFrame,
-            bar: bar,
-            frameRate: frameRate
-        )
-
-        // 4b. Compute real-world measurements if bar height is known
-        if let barHeightMeters, let bar {
-            computeRealWorldMeasurements(
-                measurements: &measurements,
-                poses: smoothedPoses,
-                takeoffFrame: takeoffFrame,
-                bar: bar,
-                barHeightMeters: barHeightMeters
-            )
-        }
-
-        // 5. Detect errors
-        let errors = detectErrors(
-            measurements: measurements,
-            poses: smoothedPoses,
+            athletePoses: athletePoses,
             phases: phases,
-            takeoffFrame: takeoffFrame,
-            peakFrame: peakFrame,
-            bar: bar
+            keyFrames: keyFrames,
+            comPositions: comPositions,
+            frameRate: session.frameRate,
+            calibration: calibration
         )
 
-        // 6. Generate recommendations
-        let recommendations = generateRecommendations(from: errors)
+        // Set bar info
+        measurements.barHeightMeters = session.barHeightMeters
+        measurements.cameraAngle = calibration?.cameraAngle
+
+        // Detect errors
+        let errors = detectErrors(measurements: measurements, keyFrames: keyFrames, phases: phases)
+
+        // Generate recommendations
+        let recommendations = generateRecommendations(errors: errors)
+
+        // Build phase list
+        let detectedPhases = buildDetectedPhases(phases: phases, keyFrames: keyFrames)
+
+        // Generate coaching insights
+        let insights = generateCoachingInsights(measurements: measurements, errors: errors, keyFrames: keyFrames)
+
+        // Compute clearance profile at bar crossing
+        let clearanceProfile = computeClearanceProfile(
+            athletePoses: athletePoses,
+            keyFrames: keyFrames,
+            calibration: calibration
+        )
 
         return AnalysisResult(
-            phases: phases,
+            phases: detectedPhases,
             measurements: measurements,
             errors: errors,
-            recommendations: recommendations
+            recommendations: recommendations,
+            coachingInsights: insights,
+            keyFrames: keyFrames,
+            clearanceProfile: clearanceProfile
         )
     }
 
-    // MARK: - Pose Smoothing
+    // MARK: - Athlete Pose Extraction
 
-    /// Apply 3-frame moving average to reduce joint position noise
-    private static func smoothPoses(_ poses: [BodyPose]) -> [BodyPose] {
-        guard poses.count >= 3 else { return poses }
+    private func extractAthletePoses(
+        allFramePoses: [[BodyPose]],
+        assignments: [Int: FrameAssignment]
+    ) -> [BodyPose?] {
+        var result: [BodyPose?] = Array(repeating: nil, count: allFramePoses.count)
 
-        var smoothed: [BodyPose] = []
-
-        for i in 0..<poses.count {
-            let windowStart = max(0, i - 1)
-            let windowEnd = min(poses.count - 1, i + 1)
-            let window = Array(poses[windowStart...windowEnd])
-
-            var smoothedJoints: [BodyPose.JointName: BodyPose.JointPosition] = [:]
-
-            for jointName in BodyPose.JointName.allCases {
-                let validPositions = window.compactMap { $0.joints[jointName] }
-                guard !validPositions.isEmpty else { continue }
-
-                let avgX = validPositions.map(\.point.x).reduce(0, +) / CGFloat(validPositions.count)
-                let avgY = validPositions.map(\.point.y).reduce(0, +) / CGFloat(validPositions.count)
-                let avgConf = validPositions.map(\.confidence).reduce(0, +) / Float(validPositions.count)
-
-                smoothedJoints[jointName] = BodyPose.JointPosition(
-                    point: CGPoint(x: avgX, y: avgY),
-                    confidence: avgConf
-                )
-            }
-
-            smoothed.append(BodyPose(
-                frameIndex: poses[i].frameIndex,
-                timestamp: poses[i].timestamp,
-                joints: smoothedJoints
-            ))
-        }
-
-        return smoothed
-    }
-
-    // MARK: - Key Frame Detection
-
-    /// Find the takeoff frame: last ground contact before sustained upward movement
-    private static func findTakeoffFrame(poses: [BodyPose]) -> Int {
-        // Track root Y position (in Vision coords, higher Y = higher position)
-        let rootYValues = poses.map { $0.joints[.root]?.point.y ?? 0 }
-
-        guard rootYValues.count >= 10 else {
-            return poses.count / 2
-        }
-
-        // Compute velocity (change in Y between frames)
-        var velocities: [Double] = [0]
-        for i in 1..<rootYValues.count {
-            velocities.append(Double(rootYValues[i] - rootYValues[i - 1]))
-        }
-
-        // Smooth velocities
-        var smoothVelocities = velocities
-        for i in 2..<(velocities.count - 2) {
-            smoothVelocities[i] = (velocities[i-2] + velocities[i-1] + velocities[i] +
-                                   velocities[i+1] + velocities[i+2]) / 5.0
-        }
-
-        // Find the frame where velocity transitions from near-zero/negative to strongly positive
-        // AND this upward movement is sustained for at least 3 frames
-        var bestTakeoff = poses.count / 2
-        var bestScore: Double = 0
-
-        for i in 5..<(smoothVelocities.count - 5) {
-            // Check for velocity transition
-            let prevAvg = (smoothVelocities[i-3] + smoothVelocities[i-2] + smoothVelocities[i-1]) / 3.0
-            let nextAvg = (smoothVelocities[i+1] + smoothVelocities[i+2] + smoothVelocities[i+3]) / 3.0
-
-            // Score: strong upward acceleration from low/negative velocity
-            if prevAvg < 0.005 && nextAvg > 0.005 {
-                let score = nextAvg - prevAvg
-                if score > bestScore {
-                    bestScore = score
-                    bestTakeoff = i
-                }
+        for (frameIndex, framePoses) in allFramePoses.enumerated() {
+            if let assignment = assignments[frameIndex],
+               let poseIndex = assignment.athletePoseIndex,
+               poseIndex < framePoses.count {
+                result[frameIndex] = framePoses[poseIndex]
             }
         }
 
-        return bestTakeoff
+        return result
     }
 
-    /// Find the landing frame: significant downward movement after flight
-    private static func findLandingFrame(poses: [BodyPose], after takeoffFrame: Int) -> Int {
-        let rootYValues = poses.map { $0.joints[.root]?.point.y ?? 0 }
+    // MARK: - COM Trajectory
 
-        // Find peak after takeoff
-        var peakFrame = takeoffFrame
-        var peakY: CGFloat = 0
-
-        let searchEnd = min(poses.count, takeoffFrame + poses.count / 2)
-        for i in takeoffFrame..<searchEnd {
-            if rootYValues[i] > peakY {
-                peakY = rootYValues[i]
-                peakFrame = i
+    private func computeCOMTrajectory(
+        poses: [BodyPose?],
+        sex: COMCalculator.Sex
+    ) -> [Int: CGPoint] {
+        var comPositions: [Int: CGPoint] = [:]
+        for (i, pose) in poses.enumerated() {
+            if let pose, let com = COMCalculator.calculateCOM(pose: pose, sex: sex) {
+                comPositions[i] = com
             }
         }
-
-        // Find where Y drops significantly below peak (landing)
-        let threshold = peakY - (peakY - rootYValues[takeoffFrame]) * 0.7
-
-        for i in peakFrame..<searchEnd {
-            if rootYValues[i] < threshold {
-                return i
-            }
-        }
-
-        // Fallback: 2 seconds after takeoff
-        return min(poses.count - 1, takeoffFrame + Int(60))
+        return comPositions
     }
 
-    /// Find the penultimate step frame (second-to-last ground contact before takeoff)
-    private static func findPenultimateStep(poses: [BodyPose], before takeoffFrame: Int) -> Int {
-        // Look at ankle Y values before takeoff to find ground contacts
-        let searchStart = max(0, takeoffFrame - 30)
+    // MARK: - Measurements
 
-        // Track the lowest ankle position (closer to ground = lower Y in Vision coords)
-        var ankleMinima: [Int] = []
-
-        for i in (searchStart + 1)..<takeoffFrame {
-            let leftAnkleY = poses[i].joints[.leftAnkle]?.point.y ?? 1.0
-            let rightAnkleY = poses[i].joints[.rightAnkle]?.point.y ?? 1.0
-            let minAnkleY = min(leftAnkleY, rightAnkleY)
-
-            let prevMinAnkle = min(
-                poses[i-1].joints[.leftAnkle]?.point.y ?? 1.0,
-                poses[i-1].joints[.rightAnkle]?.point.y ?? 1.0
-            )
-
-            if i + 1 < takeoffFrame {
-                let nextMinAnkle = min(
-                    poses[i+1].joints[.leftAnkle]?.point.y ?? 1.0,
-                    poses[i+1].joints[.rightAnkle]?.point.y ?? 1.0
-                )
-
-                // Local minimum = lower than neighbors
-                if minAnkleY <= prevMinAnkle && minAnkleY <= nextMinAnkle {
-                    ankleMinima.append(i)
-                }
-            }
-        }
-
-        // Penultimate = second-to-last minimum before takeoff
-        if ankleMinima.count >= 2 {
-            return ankleMinima[ankleMinima.count - 2]
-        } else if let last = ankleMinima.last {
-            return max(searchStart, last - 5)
-        }
-
-        // Fallback: 10 frames before takeoff
-        return max(0, takeoffFrame - 10)
-    }
-
-    /// Find the peak frame (highest point during flight)
-    private static func findPeakFrame(poses: [BodyPose], takeoff: Int, landing: Int) -> Int {
-        var peakFrame = takeoff
-        var peakY: CGFloat = 0
-
-        for i in takeoff...min(landing, poses.count - 1) {
-            let rootY = poses[i].joints[.root]?.point.y ?? 0
-            if rootY > peakY {
-                peakY = rootY
-                peakFrame = i
-            }
-        }
-
-        return peakFrame
-    }
-
-    // MARK: - Phase Building
-
-    private static func buildPhases(
-        totalFrames: Int,
-        penultimate: Int,
-        takeoff: Int,
-        landing: Int
-    ) -> [DetectedPhase] {
-        var phases: [DetectedPhase] = []
-
-        // Approach: start to penultimate
-        if penultimate > 0 {
-            phases.append(DetectedPhase(
-                phase: .approach,
-                startFrame: 0,
-                endFrame: max(0, penultimate - 1),
-                keyMetrics: [:]
-            ))
-        }
-
-        // Penultimate
-        phases.append(DetectedPhase(
-            phase: .penultimate,
-            startFrame: penultimate,
-            endFrame: max(penultimate, takeoff - 1),
-            keyMetrics: [:]
-        ))
-
-        // Takeoff
-        phases.append(DetectedPhase(
-            phase: .takeoff,
-            startFrame: takeoff,
-            endFrame: min(takeoff + 3, landing),
-            keyMetrics: [:]
-        ))
-
-        // Flight
-        if takeoff + 4 < landing {
-            phases.append(DetectedPhase(
-                phase: .flight,
-                startFrame: takeoff + 4,
-                endFrame: landing,
-                keyMetrics: [:]
-            ))
-        }
-
-        // Landing
-        if landing < totalFrames - 1 {
-            phases.append(DetectedPhase(
-                phase: .landing,
-                startFrame: landing + 1,
-                endFrame: totalFrames - 1,
-                keyMetrics: [:]
-            ))
-        }
-
-        return phases
-    }
-
-    // MARK: - Measurement Computation
-
-    private static func computeMeasurements(
-        poses: [BodyPose],
-        takeoffFrame: Int,
-        landingFrame: Int,
-        penultimateFrame: Int,
-        peakFrame: Int,
-        bar: BarDetectionResult?,
-        frameRate: Double
+    private func computeMeasurements(
+        athletePoses: [BodyPose?],
+        phases: [JumpPhase],
+        keyFrames: AnalysisResult.KeyFrames,
+        comPositions: [Int: CGPoint],
+        frameRate: Double,
+        calibration: ScaleCalibration?
     ) -> JumpMeasurements {
         var m = JumpMeasurements()
 
-        let takeoffPose = poses.indices.contains(takeoffFrame) ? poses[takeoffFrame] : nil
-        let penultimatePose = poses.indices.contains(penultimateFrame) ? poses[penultimateFrame] : nil
-        let peakPose = poses.indices.contains(peakFrame) ? poses[peakFrame] : nil
+        // Takeoff metrics
+        if let plantFrame = keyFrames.takeoffPlant,
+           let plantPose = athletePoses[safe: plantFrame] as? BodyPose {
 
-        // Takeoff leg angle at plant
-        // Determine which leg is the plant leg (the one with ankle closer to ground at takeoff)
-        if let pose = takeoffPose {
-            let (plantSide, _) = determinePlantLeg(pose: pose)
+            // Takeoff leg knee at plant
+            m.takeoffLegKneeAtPlant = plantPose.angle(from: .leftHip, vertex: .leftKnee, to: .leftAnkle)
+                ?? plantPose.angle(from: .rightHip, vertex: .rightKnee, to: .rightAnkle)
 
-            if plantSide == .left {
-                m.takeoffLegAngleAtPlant = pose.angle(from: .leftHip, vertex: .leftKnee, to: .leftAnkle)
-                m.driveKneeAngleAtTakeoff = pose.angle(from: .rightHip, vertex: .rightKnee, to: .rightAnkle)
-            } else {
-                m.takeoffLegAngleAtPlant = pose.angle(from: .rightHip, vertex: .rightKnee, to: .rightAnkle)
-                m.driveKneeAngleAtTakeoff = pose.angle(from: .leftHip, vertex: .leftKnee, to: .leftAnkle)
-            }
-        }
+            // Ankle angle at plant (knee → ankle → foot_index)
+            m.ankleAngleAtPlant = plantPose.angle(from: .leftKnee, vertex: .leftAnkle, to: .leftFootIndex)
+                ?? plantPose.angle(from: .rightKnee, vertex: .rightAnkle, to: .rightFootIndex)
 
-        // Torso lean during approach curve (average of last 10 approach frames)
-        let approachEnd = max(0, penultimateFrame - 1)
-        let approachStart = max(0, approachEnd - 10)
-        if approachEnd > approachStart {
-            var leans: [Double] = []
-            for i in approachStart...approachEnd {
-                if let neck = poses[i].joints[.neck]?.point,
-                   let root = poses[i].joints[.root]?.point {
-                    let lean = AngleCalculator.angleFromVertical(top: neck, bottom: root)
-                    leans.append(lean)
-                }
-            }
-            if !leans.isEmpty {
-                m.torsoLeanDuringCurve = leans.reduce(0, +) / Double(leans.count)
-            }
-        }
+            // Drive knee angle
+            m.driveKneeAngleAtTakeoff = plantPose.angle(from: .rightHip, vertex: .rightKnee, to: .rightAnkle)
+                ?? plantPose.angle(from: .leftHip, vertex: .leftKnee, to: .leftAnkle)
 
-        // Hip-shoulder separation at penultimate touchdown
-        if let pose = penultimatePose {
-            if let ls = pose.joints[.leftShoulder]?.point,
-               let rs = pose.joints[.rightShoulder]?.point,
-               let lh = pose.joints[.leftHip]?.point,
-               let rh = pose.joints[.rightHip]?.point {
+            // Hip-shoulder separation at TD
+            if let ls = plantPose.jointPoint(.leftShoulder),
+               let rs = plantPose.jointPoint(.rightShoulder),
+               let lh = plantPose.jointPoint(.leftHip),
+               let rh = plantPose.jointPoint(.rightHip) {
                 m.hipShoulderSeparationAtTD = AngleCalculator.hipShoulderSeparation(
                     leftShoulder: ls, rightShoulder: rs,
                     leftHip: lh, rightHip: rh
@@ -399,348 +142,167 @@ struct AnalysisEngine {
             }
         }
 
-        // Hip-shoulder separation at takeoff
-        if let pose = takeoffPose {
-            if let ls = pose.joints[.leftShoulder]?.point,
-               let rs = pose.joints[.rightShoulder]?.point,
-               let lh = pose.joints[.leftHip]?.point,
-               let rh = pose.joints[.rightHip]?.point {
-                m.hipShoulderSeparationAtTO = AngleCalculator.hipShoulderSeparation(
-                    leftShoulder: ls, rightShoulder: rs,
-                    leftHip: lh, rightHip: rh
-                )
-            }
-        }
+        // Toe-off metrics
+        if let toeOffFrame = keyFrames.toeOff,
+           let toeOffPose = athletePoses[safe: toeOffFrame] as? BodyPose {
 
-        // Back arch angle at peak
-        if let pose = peakPose {
-            // Measure the angle at root (hip) formed by neck and knee
-            let leftKneeAngle = pose.angle(from: .neck, vertex: .root, to: .leftKnee)
-            let rightKneeAngle = pose.angle(from: .neck, vertex: .root, to: .rightKnee)
-            if let left = leftKneeAngle, let right = rightKneeAngle {
-                m.backArchAngle = min(left, right)
-            } else {
-                m.backArchAngle = leftKneeAngle ?? rightKneeAngle
-            }
-        }
+            m.takeoffLegKneeAtToeOff = toeOffPose.angle(from: .leftHip, vertex: .leftKnee, to: .leftAnkle)
+                ?? toeOffPose.angle(from: .rightHip, vertex: .rightKnee, to: .rightAnkle)
 
-        // Approach angle to bar
-        if let bar = bar {
-            let approachPoints = (max(0, takeoffFrame - 10)..<takeoffFrame).compactMap { i -> CGPoint? in
-                poses.indices.contains(i) ? poses[i].joints[.root]?.point : nil
-            }
-            m.approachAngleToBar = AngleCalculator.approachAngleToBar(
-                trajectoryPoints: approachPoints,
-                barStart: bar.barLineStart,
-                barEnd: bar.barLineEnd
-            )
+            m.anklePlantarflexionAtToeOff = toeOffPose.angle(from: .leftKnee, vertex: .leftAnkle, to: .leftFootIndex)
+                ?? toeOffPose.angle(from: .rightKnee, vertex: .rightAnkle, to: .rightFootIndex)
         }
 
         // Ground contact time
-        // Estimate from ankle velocity: plant frame to frame where ankle leaves ground
-        m.estimatedGroundContactTime = Double(min(6, max(3, takeoffFrame - penultimateFrame))) / frameRate
-
-        // Peak height (normalized)
-        if let peakRoot = peakPose?.joints[.root]?.point.y {
-            m.peakHeight = Double(peakRoot)
+        if let plant = keyFrames.takeoffPlant, let toeOff = keyFrames.toeOff {
+            m.groundContactTime = Double(toeOff - plant) / frameRate
         }
 
-        // Jump rise: how much the root Y increased from takeoff to peak
-        if let takeoffRoot = takeoffPose?.joints[.root]?.point.y,
-           let peakRoot = peakPose?.joints[.root]?.point.y {
-            m.jumpRise = Double(peakRoot - takeoffRoot)
-        }
-
-        // Peak clearance over bar
-        // Compare the athlete's highest point (peak of root/neck/nose at peak frame)
-        // to the bar Y position. Both in Vision normalized coords.
-        if let bar = bar, let peakPose = peakPose {
-            // Use the highest joint at peak frame for clearance calculation
-            let candidateJoints: [BodyPose.JointName] = [.root, .neck, .nose, .leftHip, .rightHip]
-            var maxY: CGFloat = 0
-            for jointName in candidateJoints {
-                if let y = peakPose.joints[jointName]?.point.y, y > maxY {
-                    maxY = y
-                }
-            }
-            // barY is in Vision coords (higher Y = higher position)
-            let barY = bar.barY
-            m.peakClearanceOverBar = Double(maxY - barY)
-        }
-
-        // ──────────────────────────────────────────────────
-        // Bar knock detection
-        // Check if any body part crosses through the bar plane during flight
-        // ──────────────────────────────────────────────────
-        if let bar = bar {
-            let barY = bar.barY
-            let barXMin = min(bar.barLineStart.x, bar.barLineEnd.x)
-            let barXMax = max(bar.barLineStart.x, bar.barLineEnd.x)
-            let barYTolerance: CGFloat = 0.015  // ~1.5% of frame height
-
-            // Check joints that commonly knock the bar
-            let knockJoints: [(BodyPose.JointName, String)] = [
-                (.root, "hips"), (.leftHip, "hips"), (.rightHip, "hips"),
-                (.leftKnee, "trail leg"), (.rightKnee, "trail leg"),
-                (.leftAnkle, "trail leg"), (.rightAnkle, "trail leg"),
-                (.leftShoulder, "shoulders"), (.rightShoulder, "shoulders"),
-                (.leftElbow, "arms"), (.rightElbow, "arms"),
-            ]
-
-            let flightStart = takeoffFrame + 2
-            let flightEnd = min(poses.count - 1, landingFrame)
-
-            for i in flightStart...flightEnd {
-                let pose = poses[i]
-                for (jointName, partName) in knockJoints {
-                    guard let joint = pose.joints[jointName],
-                          joint.confidence > 0.2 else { continue }
-
-                    let jx = joint.point.x
-                    let jy = joint.point.y
-
-                    // Joint must be horizontally within the bar span
-                    guard jx >= barXMin - 0.05 && jx <= barXMax + 0.05 else { continue }
-
-                    // Joint must be within tolerance of bar Y (crossing the bar plane)
-                    if abs(jy - barY) < barYTolerance {
-                        m.barKnocked = true
-                        m.barKnockFrame = i
-                        m.barKnockBodyPart = partName
-                        break
-                    }
-                }
-                if m.barKnocked { break }
-            }
-
-            // Takeoff distance from bar (horizontal distance from root at takeoff to bar center X)
-            if let takeoffRoot = takeoffPose?.joints[.root]?.point {
-                let barCenterX = (bar.barLineStart.x + bar.barLineEnd.x) / 2.0
-                m.takeoffDistance = Double(abs(takeoffRoot.x - barCenterX))
+        // Takeoff angle (COM trajectory)
+        if let toeOff = keyFrames.toeOff,
+           let comAtToeOff = comPositions[toeOff],
+           let comBefore = comPositions[max(0, toeOff - 2)] {
+            let dx = comAtToeOff.x - comBefore.x
+            let dy = comBefore.y - comAtToeOff.y  // Invert Y for "up" direction
+            if abs(dx) > 0.001 {
+                m.takeoffAngle = atan2(Double(dy), Double(abs(dx))) * 180.0 / .pi
             }
         }
 
-        // Set jump success/fail based on bar knock detection
-        if bar != nil {
-            m.jumpSuccess = !m.barKnocked
+        // Peak metrics
+        if let peakFrame = keyFrames.peakHeight,
+           let peakPose = athletePoses[safe: peakFrame] as? BodyPose {
+
+            // Back tilt angle at peak (neck-to-hip vs horizontal)
+            if let neck = peakPose.jointPoint(.neck),
+               let root = peakPose.jointPoint(.root) {
+                let dx = Double(root.x - neck.x)
+                let dy = Double(root.y - neck.y)
+                m.backTiltAngleAtPeak = atan2(dy, dx) * 180.0 / .pi
+            }
         }
 
-        // ──────────────────────────────────────────────────
+        // COM heights for H1/H2/H3
+        if let toeOff = keyFrames.toeOff,
+           let peakFrame = keyFrames.peakHeight,
+           let comToeOff = comPositions[toeOff],
+           let comPeak = comPositions[peakFrame],
+           let calibration {
+
+            let h1Normalized = calibration.groundY - Double(comToeOff.y)
+            let h2Normalized = Double(comToeOff.y) - Double(comPeak.y)  // Rise = decrease in Y
+
+            m.h1 = h1Normalized / calibration.pixelsPerMeter
+            m.h2 = h2Normalized / calibration.pixelsPerMeter
+            if let barHeight = calibration.barHeightMeters as Double?,
+               let h1 = m.h1, let h2 = m.h2 {
+                m.h3 = barHeight - h1 - h2
+            }
+
+            m.comHeightAtToeOff = m.h1
+            m.peakCOMHeight = (calibration.groundY - Double(comPeak.y)) / calibration.pixelsPerMeter
+
+            // COM rise
+            m.comRise = m.h2
+
+            // Vertical velocity at toe-off (from COM displacement)
+            if toeOff > 0, let comPrev = comPositions[toeOff - 1] {
+                let dyNorm = Double(comPrev.y - comToeOff.y)  // Positive = moving up
+                let dtSeconds = 1.0 / frameRate
+                let dyMeters = dyNorm / calibration.pixelsPerMeter
+                m.verticalVelocityAtToeOff = dyMeters / dtSeconds
+            }
+        }
+
         // Flight time
-        // ──────────────────────────────────────────────────
-        let flightFrames = landingFrame - takeoffFrame
-        if flightFrames > 0 {
-            m.flightTime = Double(flightFrames) / frameRate
-        }
-
-        // ──────────────────────────────────────────────────
-        // Approach speed (average root displacement per frame in last 15 approach frames)
-        // ──────────────────────────────────────────────────
-        let speedStart = max(0, takeoffFrame - 15)
-        let speedEnd = max(speedStart + 1, takeoffFrame - 1)
-        if speedEnd > speedStart {
-            var totalDisplacement: Double = 0
-            var count = 0
-            for i in speedStart..<speedEnd {
-                guard let p1 = poses[i].joints[.root]?.point,
-                      let p2 = poses[i + 1].joints[.root]?.point else { continue }
-                let dx = Double(p2.x - p1.x)
-                let dy = Double(p2.y - p1.y)
-                totalDisplacement += sqrt(dx * dx + dy * dy)
-                count += 1
-            }
-            if count > 0 {
-                m.approachSpeed = totalDisplacement / Double(count)
-            }
-        }
-
-        // ──────────────────────────────────────────────────
-        // Takeoff vertical velocity (root Y velocity at takeoff, units/frame)
-        // ──────────────────────────────────────────────────
-        if takeoffFrame + 2 < poses.count {
-            if let y0 = poses[takeoffFrame].joints[.root]?.point.y,
-               let y2 = poses[min(takeoffFrame + 2, poses.count - 1)].joints[.root]?.point.y {
-                m.takeoffVerticalVelocity = Double(y2 - y0) / 2.0
-            }
-        }
-
-        // ──────────────────────────────────────────────────
-        // J-Curve radius estimation
-        // Fit circle to last 8 root positions before takeoff
-        // ──────────────────────────────────────────────────
-        let curveStart = max(0, takeoffFrame - 8)
-        if takeoffFrame - curveStart >= 4 {
-            let curvePoints = (curveStart..<takeoffFrame).compactMap { i -> CGPoint? in
-                poses.indices.contains(i) ? poses[i].joints[.root]?.point : nil
-            }
-            if curvePoints.count >= 4 {
-                m.jCurveRadius = estimateCurveRadius(points: curvePoints)
-            }
+        if let toeOff = keyFrames.toeOff, let landing = keyFrames.landing {
+            m.flightTime = Double(landing - toeOff) / frameRate
         }
 
         return m
     }
 
-    /// Determine which leg is the plant leg at takeoff
-    private static func determinePlantLeg(pose: BodyPose) -> (side: Side, confidence: Double) {
-        let leftAnkleY = pose.joints[.leftAnkle]?.point.y ?? 0.5
-        let rightAnkleY = pose.joints[.rightAnkle]?.point.y ?? 0.5
-
-        // In Vision coordinates, lower Y = closer to bottom of image = closer to ground
-        if leftAnkleY < rightAnkleY {
-            return (.left, Double(abs(rightAnkleY - leftAnkleY)))
-        } else {
-            return (.right, Double(abs(leftAnkleY - rightAnkleY)))
-        }
-    }
-
-    enum Side { case left, right }
-
     // MARK: - Error Detection
 
-    private static func detectErrors(
+    private func detectErrors(
         measurements: JumpMeasurements,
-        poses: [BodyPose],
-        phases: [DetectedPhase],
-        takeoffFrame: Int,
-        peakFrame: Int,
-        bar: BarDetectionResult?
+        keyFrames: AnalysisResult.KeyFrames,
+        phases: [JumpPhase]
     ) -> [DetectedError] {
         var errors: [DetectedError] = []
 
-        let approachPhase = phases.first { $0.phase == .approach }
-        let flightPhase = phases.first { $0.phase == .flight }
+        let plantFrame = keyFrames.takeoffPlant ?? 0
+        let toeOffFrame = keyFrames.toeOff ?? 0
+        let peakFrame = keyFrames.peakHeight ?? 0
 
-        // 1. Extended body position (drive knee too straight at takeoff)
+        // Takeoff leg knee at plant
+        if let knee = measurements.takeoffLegKneeAtPlant {
+            if knee < 155 {
+                errors.append(DetectedError(
+                    type: .improperTakeoffAngle,
+                    frameRange: plantFrame...plantFrame,
+                    severity: .major,
+                    description: String(format: "Takeoff leg too bent at plant (%.0f\u{00B0}, ideal 160-175\u{00B0})", knee)
+                ))
+            }
+        }
+
+        // Drive knee too extended
         if let driveKnee = measurements.driveKneeAngleAtTakeoff, driveKnee > 120 {
-            let severity: DetectedError.Severity = driveKnee > 150 ? .major : .moderate
             errors.append(DetectedError(
-                id: UUID(),
                 type: .extendedBodyPosition,
-                frameRange: takeoffFrame...min(takeoffFrame + 3, poses.count - 1),
-                severity: severity,
-                description: "Drive knee angle is \(Int(driveKnee))°. A more compact drive knee (70-90°) generates greater upward force at takeoff."
+                frameRange: plantFrame...toeOffFrame,
+                severity: .major,
+                description: String(format: "Drive knee too extended (%.0f\u{00B0}, ideal 70-90\u{00B0})", driveKnee)
             ))
         }
 
-        // 2. Improper takeoff angle
-        if let torsoLean = measurements.torsoLeanDuringCurve {
-            if torsoLean > 30 {
-                errors.append(DetectedError(
-                    id: UUID(),
-                    type: .improperTakeoffAngle,
-                    frameRange: (approachPhase?.startFrame ?? 0)...(approachPhase?.endFrame ?? takeoffFrame),
-                    severity: .major,
-                    description: "Excessive torso lean of \(Int(torsoLean))° during approach. Maintain 10-20° lean to stay balanced through the curve."
-                ))
-            } else if torsoLean < 5 {
-                errors.append(DetectedError(
-                    id: UUID(),
-                    type: .improperTakeoffAngle,
-                    frameRange: (approachPhase?.startFrame ?? 0)...(approachPhase?.endFrame ?? takeoffFrame),
-                    severity: .moderate,
-                    description: "Insufficient torso lean (\(Int(torsoLean))°). A 10-20° inward lean helps generate rotation for bar clearance."
-                ))
-            }
-        }
-
-        // 3. Takeoff leg not fully extended
-        if let plantAngle = measurements.takeoffLegAngleAtPlant {
-            if plantAngle < 155 {
-                let severity: DetectedError.Severity = plantAngle < 140 ? .major : .moderate
-                errors.append(DetectedError(
-                    id: UUID(),
-                    type: .improperTakeoffAngle,
-                    frameRange: takeoffFrame...min(takeoffFrame + 2, poses.count - 1),
-                    severity: severity,
-                    description: "Plant leg angle is \(Int(plantAngle))° at takeoff. A nearly straight plant leg (160-175°) provides a better lever for vertical force."
-                ))
-            }
-        }
-
-        // 4. Approach angle to bar
-        if let approachAngle = measurements.approachAngleToBar {
-            if approachAngle < 20 {
-                errors.append(DetectedError(
-                    id: UUID(),
-                    type: .flatteningCurve,
-                    frameRange: (approachPhase?.startFrame ?? 0)...(approachPhase?.endFrame ?? takeoffFrame),
-                    severity: .moderate,
-                    description: "Approach angle is only \(Int(approachAngle))° to the bar. Running too parallel reduces clearance efficiency. Aim for ~35° angle."
-                ))
-            } else if approachAngle > 55 {
-                errors.append(DetectedError(
-                    id: UUID(),
-                    type: .cuttingCurve,
-                    frameRange: (approachPhase?.startFrame ?? 0)...(approachPhase?.endFrame ?? takeoffFrame),
-                    severity: .moderate,
-                    description: "Approach angle is \(Int(approachAngle))° — running too perpendicular to the bar. This reduces horizontal speed conversion. Aim for ~35°."
-                ))
-            }
-        }
-
-        // 5. Back arch / hammock position
-        if let backArch = measurements.backArchAngle {
-            if backArch > 160 {
-                errors.append(DetectedError(
-                    id: UUID(),
-                    type: .hammockPosition,
-                    frameRange: (flightPhase?.startFrame ?? peakFrame)...(flightPhase?.endFrame ?? min(peakFrame + 5, poses.count - 1)),
-                    severity: .moderate,
-                    description: "Body is too flat over the bar (arch angle \(Int(backArch))°). A deeper back arch clears the bar more efficiently."
-                ))
-            }
-        }
-
-        // 6. Early head drop
-        if peakFrame + 3 < poses.count {
-            let peakNoseY = poses[peakFrame].joints[.nose]?.point.y ?? 0
-            let postNoseY = poses[min(peakFrame + 3, poses.count - 1)].joints[.nose]?.point.y ?? 0
-            let peakRootY = poses[peakFrame].joints[.root]?.point.y ?? 0
-            let postRootY = poses[min(peakFrame + 3, poses.count - 1)].joints[.root]?.point.y ?? 0
-
-            let noseDropRate = Double(peakNoseY - postNoseY)
-            let rootDropRate = Double(peakRootY - postRootY)
-
-            if noseDropRate > rootDropRate * 1.5 && noseDropRate > 0.02 {
-                errors.append(DetectedError(
-                    id: UUID(),
-                    type: .earlyHeadDrop,
-                    frameRange: peakFrame...min(peakFrame + 5, poses.count - 1),
-                    severity: .moderate,
-                    description: "Head drops faster than hips after peak. Keep chin level and eyes up until hips clear the bar to maintain arch."
-                ))
-            }
-        }
-
-        // 7. Hip collapse during flight
-        if let flightRange = flightPhase {
-            for i in stride(from: flightRange.startFrame, through: min(flightRange.endFrame, poses.count - 1), by: 2) {
-                let pose = poses[i]
-                if let hipAngle = pose.angle(from: .leftShoulder, vertex: .root, to: .leftKnee) ?? pose.angle(from: .rightShoulder, vertex: .root, to: .rightKnee) {
-                    if hipAngle < 140 {
-                        errors.append(DetectedError(
-                            id: UUID(),
-                            type: .hipCollapse,
-                            frameRange: flightRange.startFrame...flightRange.endFrame,
-                            severity: hipAngle < 120 ? .major : .moderate,
-                            description: "Hips are collapsing during bar clearance (angle: \(Int(hipAngle))°). Drive hips upward and maintain extension over the bar."
-                        ))
-                        break // Only report once
-                    }
-                }
-            }
-        }
-
-        // 8. Bar knock detection
-        if measurements.barKnocked, let knockFrame = measurements.barKnockFrame {
-            let partName = measurements.barKnockBodyPart ?? "body"
+        // Ground contact too long
+        if let gct = measurements.groundContactTime, gct > 0.19 {
             errors.append(DetectedError(
-                id: UUID(),
-                type: .barKnock,
-                frameRange: knockFrame...min(knockFrame + 3, poses.count - 1),
+                type: .longGroundContact,
+                frameRange: plantFrame...toeOffFrame,
+                severity: .minor,
+                description: String(format: "Ground contact time %.3fs (ideal <0.17s)", gct)
+            ))
+        }
+
+        // Takeoff distance
+        if let dist = measurements.takeoffDistanceFromBar {
+            if dist < 0.8 {
+                errors.append(DetectedError(
+                    type: .tooCloseToBar,
+                    frameRange: plantFrame...plantFrame,
+                    severity: .moderate,
+                    description: String(format: "Takeoff %.1fm from bar (too close, ideal 1.0-1.2m)", dist)
+                ))
+            } else if dist > 1.4 {
+                errors.append(DetectedError(
+                    type: .tooFarFromBar,
+                    frameRange: plantFrame...plantFrame,
+                    severity: .moderate,
+                    description: String(format: "Takeoff %.1fm from bar (too far, ideal 1.0-1.2m)", dist)
+                ))
+            }
+        }
+
+        // Back tilt at peak (hammock)
+        if let backTilt = measurements.backTiltAngleAtPeak, backTilt > 160 {
+            errors.append(DetectedError(
+                type: .hammockPosition,
+                frameRange: peakFrame...peakFrame,
                 severity: .major,
-                description: "Bar knocked by \(partName) at frame \(knockFrame + 1). The \(partName) passed through the bar plane during clearance."
+                description: "Hammock position detected — body too flat over bar"
+            ))
+        }
+
+        // Bar knock
+        if measurements.barKnocked, let knockFrame = measurements.barKnockFrame {
+            errors.append(DetectedError(
+                type: .barKnock,
+                frameRange: knockFrame...knockFrame,
+                severity: .major,
+                description: "Bar knocked by \(measurements.barKnockBodyPart ?? "unknown body part")"
             ))
         }
 
@@ -749,213 +311,180 @@ struct AnalysisEngine {
 
     // MARK: - Recommendations
 
-    private static func generateRecommendations(from errors: [DetectedError]) -> [Recommendation] {
-        var recommendations: [Recommendation] = []
-        var priority = 1
+    private func generateRecommendations(errors: [DetectedError]) -> [Recommendation] {
+        var recs: [Recommendation] = []
 
-        // Map each error to coaching recommendations
-        for error in errors.prefix(5) {
-            let (title, detail) = coachingCue(for: error.type)
-            recommendations.append(Recommendation(
-                id: UUID(),
+        for (index, error) in errors.prefix(5).enumerated() {
+            let (title, detail) = recommendationForError(error.type)
+            recs.append(Recommendation(
                 title: title,
                 detail: detail,
                 relatedError: error.type,
-                priority: priority
+                priority: index + 1,
+                phase: error.type.phase
             ))
-            priority += 1
         }
 
-        // If no errors, add general positive feedback
-        if recommendations.isEmpty {
-            recommendations.append(Recommendation(
-                id: UUID(),
-                title: "Solid Technique",
-                detail: "No major technical errors detected. Focus on consistency and gradually increasing bar height. Review the measurements to find areas for incremental improvement.",
-                relatedError: nil,
+        if errors.isEmpty {
+            recs.append(Recommendation(
+                title: "Good Jump!",
+                detail: "No major errors detected. Focus on consistency and incremental improvements.",
                 priority: 1
             ))
         }
 
-        return recommendations
+        return recs
     }
 
-    private static func coachingCue(for errorType: DetectedError.ErrorType) -> (title: String, detail: String) {
-        switch errorType {
-        case .flatteningCurve:
-            return (
-                "Maintain the J-Curve",
-                "Focus on running tangent to an arc during the last 3-5 steps. Set a cone at the curve entry point to guide your path. The curve generates the rotation needed for bar clearance."
-            )
-        case .cuttingCurve:
-            return (
-                "Widen Your Approach Curve",
-                "You're cutting too sharply toward the bar. Start your curve earlier and use a wider arc. This preserves horizontal speed and gives you a better takeoff angle. Aim for approximately 35° approach angle."
-            )
-        case .steppingOutOfCurve:
-            return (
-                "Stay on the Curve Path",
-                "Your penultimate step is drifting outside the curve. Practice running the full J-curve without looking at the bar. Mark your curve on the ground with tape during training."
-            )
-        case .extendedBodyPosition:
-            return (
-                "Drive the Free Knee Up",
-                "At takeoff, drive your free knee explosively upward to at least hip height. Think 'knee to chest.' A compact, high knee drive converts forward speed into vertical lift. Practice bounding drills to develop this."
-            )
-        case .hammockPosition:
-            return (
-                "Arch Over the Bar",
-                "Your body is too flat over the bar (hammock position). As your shoulders cross the bar, push your hips up by squeezing your glutes and driving the hips skyward. Practice bridge exercises to improve back flexibility."
-            )
+    private func recommendationForError(_ type: DetectedError.ErrorType) -> (String, String) {
+        switch type {
         case .improperTakeoffAngle:
-            return (
-                "Fix Your Takeoff Angle",
-                "Focus on planting your takeoff foot with a nearly straight leg (160-175°) and leaning slightly away from the bar at takeoff. Your lean during the curve should be 10-20° inward — enough to generate rotation but not so much that you fall into the bar."
-            )
-        case .hipCollapse:
-            return (
-                "Drive Hips Over the Bar",
-                "Your hips are dropping during bar clearance. As your shoulders pass the bar, aggressively drive your hips upward. Squeeze your glutes at the peak. Think about pushing your belt buckle to the sky. Strengthen hip extensors with glute bridges and hip thrusts."
-            )
-        case .insufficientRotation:
-            return (
-                "Improve Rotation Off the Ground",
-                "You need more rotation at takeoff to turn your back to the bar. This comes from the curved approach and the lean during the last steps. Focus on maintaining your curve and using your arms to initiate the turn. The inside arm drives across your body at takeoff."
-            )
-        case .earlyHeadDrop:
-            return (
-                "Keep Your Eyes Up Longer",
-                "You're dropping your chin too early, which pulls your hips down before they clear the bar. Keep your eyes looking up and your chin level until you feel your hips pass the bar. Then tuck your chin to lift your legs clear."
-            )
+            return ("Stiffen Your Plant Leg", "Drive into the ground with a straighter takeoff leg (160-175\u{00B0}). Practice penultimate pop-ups focusing on extending through the knee.")
+        case .extendedBodyPosition:
+            return ("Drive Your Knee Higher", "Keep the drive knee tight (70-90\u{00B0}) and punch it upward. A loose drive knee reduces jump height.")
+        case .longGroundContact:
+            return ("Faster Takeoff", "Spend less time on the ground. Practice quick-contact penultimate drills.")
+        case .tooCloseToBar:
+            return ("Move Your Takeoff Back", "Start your plant foot further from the bar (~1.0-1.2m). Mark your takeoff spot in practice.")
+        case .tooFarFromBar:
+            return ("Move Your Takeoff Closer", "Your takeoff is too far from the bar. Shorten your last step slightly.")
+        case .hammockPosition:
+            return ("Improve Your Arch", "Drive hips up over the bar. Think 'hips to the sky' at the peak. Your back should arch, not flatten.")
         case .barKnock:
-            return (
-                "Bar Contact Detected",
-                "A body part crossed the bar plane during clearance. Review the indicated frame to identify which phase needs improvement. Common causes: insufficient peak height (more explosive takeoff needed), poor arch timing (hips or trail leg catching the bar), or taking off too close/far from the bar."
-            )
+            return ("Address Bar Contact", "Review the contact frame to identify the cause — most bar knocks come from approach/curve issues, not clearance technique.")
+        case .flatteningCurve:
+            return ("Tighten Your Curve", "Your approach angle is too shallow. Run a tighter J-curve to build rotation for bar clearance.")
+        case .cuttingCurve:
+            return ("Widen Your Curve", "Your approach angle is too steep. A gentler curve gives you more time to build speed.")
+        case .earlyHeadDrop:
+            return ("Keep Your Head Up", "Don't drop your head until your hips clear the bar. Early head drop pulls your legs into the bar.")
+        default:
+            return ("Review Technique", "Check the flagged frames for areas to improve.")
         }
     }
 
-    // MARK: - Geometry Helpers
+    // MARK: - Phase Building
 
-    /// Estimate the radius of curvature from a series of points using Menger curvature.
-    /// Returns average radius in normalized coordinates.
-    private static func estimateCurveRadius(points: [CGPoint]) -> Double {
-        guard points.count >= 3 else { return 0 }
+    private func buildDetectedPhases(phases: [JumpPhase], keyFrames: AnalysisResult.KeyFrames) -> [DetectedPhase] {
+        var result: [DetectedPhase] = []
+        guard !phases.isEmpty else { return result }
 
-        var radii: [Double] = []
+        var currentPhase = phases[0]
+        var startFrame = 0
 
-        // Sample triplets to estimate curvature
-        let step = max(1, points.count / 4)
-        for i in stride(from: 0, to: points.count - 2 * step, by: step) {
-            let a = points[i]
-            let b = points[i + step]
-            let c = points[min(i + 2 * step, points.count - 1)]
-
-            // Menger curvature: 4 * area(triangle) / (|AB| * |BC| * |CA|)
-            let area = abs(Double(
-                (b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y)
-            )) / 2.0
-
-            let ab = sqrt(pow(Double(b.x - a.x), 2) + pow(Double(b.y - a.y), 2))
-            let bc = sqrt(pow(Double(c.x - b.x), 2) + pow(Double(c.y - b.y), 2))
-            let ca = sqrt(pow(Double(a.x - c.x), 2) + pow(Double(a.y - c.y), 2))
-
-            let denom = ab * bc * ca
-            guard denom > 0.0001 else { continue }
-
-            let curvature = 4.0 * area / denom
-            if curvature > 0.001 {
-                radii.append(1.0 / curvature)
-            }
-        }
-
-        guard !radii.isEmpty else { return 0 }
-        return radii.reduce(0, +) / Double(radii.count)
-    }
-
-    // MARK: - Real-World Measurements
-
-    /// Convert normalized measurements to real-world units using bar height as reference.
-    ///
-    /// The approach: the bar Y in normalized Vision coords represents `barHeightMeters` above ground.
-    /// Ground level is estimated as the lowest ankle Y during the approach phase.
-    /// Scale factor = barHeightMeters / (barY - groundY)
-    private static func computeRealWorldMeasurements(
-        measurements: inout JumpMeasurements,
-        poses: [BodyPose],
-        takeoffFrame: Int,
-        bar: BarDetectionResult,
-        barHeightMeters: Double
-    ) {
-        measurements.barHeightMeters = barHeightMeters
-
-        // Estimate ground level: lowest ankle Y position during approach
-        // (In Vision coords, lower Y = closer to ground)
-        var groundY: CGFloat = 1.0  // start high
-        let approachEnd = min(takeoffFrame, poses.count - 1)
-        let approachStart = max(0, approachEnd - 30)  // look at last 30 approach frames
-
-        for i in approachStart...approachEnd {
-            let pose = poses[i]
-            for ankleJoint in [BodyPose.JointName.leftAnkle, .rightAnkle] {
-                if let ankle = pose.joints[ankleJoint],
-                   ankle.confidence > 0.2,
-                   ankle.point.y < groundY {
-                    groundY = ankle.point.y
+        for (i, phase) in phases.enumerated() {
+            if phase != currentPhase || i == phases.count - 1 {
+                let endFrame = (i == phases.count - 1) ? i : i - 1
+                if currentPhase != .noAthlete {
+                    result.append(DetectedPhase(
+                        phase: currentPhase,
+                        startFrame: startFrame,
+                        endFrame: endFrame,
+                        keyMetrics: [:]
+                    ))
                 }
+                currentPhase = phase
+                startFrame = i
             }
         }
 
-        let barY = bar.barY
-        let normalizedBarToGround = barY - groundY
-
-        // Need a meaningful scale — bar must be visibly above ground level
-        guard normalizedBarToGround > 0.05 else { return }
-
-        let scale = barHeightMeters / Double(normalizedBarToGround)
-        measurements.metersPerNormalizedUnit = scale
-
-        // Convert jump rise to meters
-        if let jumpRise = measurements.jumpRise {
-            measurements.jumpRiseMeters = jumpRise * scale
-        }
-
-        // Convert peak clearance to meters
-        if let clearance = measurements.peakClearanceOverBar {
-            measurements.peakClearanceMeters = clearance * scale
-        }
-
-        // Convert peak height to real height above ground
-        if let peakHeight = measurements.peakHeight {
-            let normalizedAboveGround = Double(peakHeight) - Double(groundY)
-            measurements.peakHeightMeters = normalizedAboveGround * scale
-        }
+        return result
     }
 
-    // MARK: - Jump Validation
+    // MARK: - Clearance Profile
 
-    /// Verify that the tracked person actually performed a jump.
-    /// A real jump shows significant vertical rise in the root Y position.
-    /// If the root barely moves vertically, it's likely tracking a bystander.
-    private static func validateJumpDetected(poses: [BodyPose]) -> Bool {
-        // Collect root Y positions for frames with valid poses
-        let rootYValues = poses.compactMap { pose -> CGFloat? in
-            guard pose.hasMinimumConfidence,
-                  let root = pose.joints[.root] else { return nil }
-            return root.point.y
+    private func computeClearanceProfile(
+        athletePoses: [BodyPose?],
+        keyFrames: AnalysisResult.KeyFrames,
+        calibration: ScaleCalibration?
+    ) -> ClearanceProfile? {
+        // Use bar crossing frame (or peak height as fallback)
+        guard let crossingFrame = keyFrames.barCrossing ?? keyFrames.peakHeight,
+              crossingFrame < athletePoses.count,
+              let pose = athletePoses[crossingFrame],
+              let calibration else { return nil }
+
+        let barY = (calibration.barEndpoint1.y + calibration.barEndpoint2.y) / 2
+
+        let bodyPartJoints: [(String, [BodyPose.JointName])] = [
+            ("Head", [.nose]),
+            ("Shoulders", [.leftShoulder, .rightShoulder]),
+            ("Hips", [.leftHip, .rightHip]),
+            ("Knees", [.leftKnee, .rightKnee]),
+            ("Feet", [.leftAnkle, .rightAnkle]),
+        ]
+
+        var clearances: [String: Double] = [:]
+
+        for (partName, joints) in bodyPartJoints {
+            let jointYs = joints.compactMap { pose.joints[$0]?.point.y }
+            guard !jointYs.isEmpty else { continue }
+            let avgY = jointYs.reduce(0.0) { $0 + Double($1) } / Double(jointYs.count)
+
+            // In normalized coords (top-left origin): lower Y = higher position.
+            // barY is bar's normalized Y. If avgY < barY, body part is above bar.
+            let normalizedDistance = barY - avgY
+            let metersDistance = calibration.normalizedToMeters(CGFloat(normalizedDistance))
+            clearances[partName] = metersDistance
         }
 
-        guard rootYValues.count >= 10 else { return true } // Not enough data to validate
+        guard !clearances.isEmpty else { return nil }
+        return ClearanceProfile(partClearances: clearances)
+    }
 
-        // Find the range of root Y motion
-        let minY = rootYValues.min() ?? 0
-        let maxY = rootYValues.max() ?? 0
-        let verticalRange = maxY - minY
+    // MARK: - Coaching Insights
 
-        // A real high jump should show at least ~8% of frame height vertical motion
-        // (a bystander standing still typically has <3% variation from pose jitter)
-        let jumpThreshold: CGFloat = 0.06
+    private func generateCoachingInsights(
+        measurements: JumpMeasurements,
+        errors: [DetectedError],
+        keyFrames: AnalysisResult.KeyFrames
+    ) -> [CoachingInsight] {
+        var insights: [CoachingInsight] = []
 
-        return verticalRange >= jumpThreshold
+        // "Is my takeoff leg straight enough?"
+        if let knee = measurements.takeoffLegKneeAtPlant {
+            let status = knee >= 160 && knee <= 175 ? "Yes" : "Needs work"
+            insights.append(CoachingInsight(
+                question: "Is my takeoff leg straight enough?",
+                answer: "\(status) — your plant knee angle is \(String(format: "%.0f\u{00B0}", knee)) (ideal: 160-175\u{00B0}).",
+                phase: .takeoff,
+                relatedFrameIndex: keyFrames.takeoffPlant,
+                metric: String(format: "%.0f\u{00B0}", knee)
+            ))
+        }
+
+        // "Am I getting full extension?"
+        if let toeOffKnee = measurements.takeoffLegKneeAtToeOff {
+            let status = toeOffKnee >= 165 ? "Good extension" : "Incomplete extension"
+            insights.append(CoachingInsight(
+                question: "Am I getting full extension?",
+                answer: "\(status) — knee at toe-off is \(String(format: "%.0f\u{00B0}", toeOffKnee)) (ideal: ~170\u{00B0}).",
+                phase: .takeoff,
+                relatedFrameIndex: keyFrames.toeOff,
+                metric: String(format: "%.0f\u{00B0}", toeOffKnee)
+            ))
+        }
+
+        // "What should I work on most?"
+        if let topError = errors.first {
+            insights.append(CoachingInsight(
+                question: "What should I work on most?",
+                answer: topError.description,
+                phase: topError.type.phase,
+                relatedFrameIndex: topError.frameRange.lowerBound,
+                metric: topError.severity.label
+            ))
+        }
+
+        return insights
+    }
+}
+
+// MARK: - Array Safe Subscript
+
+private extension Array {
+    subscript(safe index: Int) -> Element? {
+        guard index >= 0 && index < count else { return nil }
+        return self[index]
     }
 }

@@ -1,10 +1,38 @@
 import SwiftUI
 
+// MARK: - Analysis Result (Top-Level)
+
 struct AnalysisResult: Sendable {
     let phases: [DetectedPhase]
     let measurements: JumpMeasurements
     let errors: [DetectedError]
     let recommendations: [Recommendation]
+    let coachingInsights: [CoachingInsight]
+    let keyFrames: KeyFrames
+    var clearanceProfile: ClearanceProfile?
+
+    struct KeyFrames: Sendable {
+        var firstAthleteFrame: Int?
+        var penultimateContact: Int?
+        var takeoffPlant: Int?
+        var toeOff: Int?
+        var peakHeight: Int?
+        var barCrossing: Int?
+        var landing: Int?
+    }
+}
+
+// MARK: - Clearance Profile
+
+/// Per-body-part clearance from the bar at the bar-crossing frame.
+struct ClearanceProfile: Sendable {
+    /// Clearance in meters for each body part (positive = above bar, negative = below/contact).
+    let partClearances: [String: Double]
+
+    /// The body part with the least clearance (the "limiter").
+    var limiterBodyPart: String? {
+        partClearances.min(by: { $0.value < $1.value })?.key
+    }
 }
 
 // MARK: - Detected Phase
@@ -21,59 +49,154 @@ struct DetectedPhase: Identifiable, Sendable {
     }
 }
 
+// MARK: - Metric Confidence Tiers (per spec Section 6)
+
+enum MetricConfidence: Int, Sendable, Codable, Comparable {
+    /// Robust — always shown, no correction needed (angles, timing, vertical measurements).
+    case tier1 = 1
+    /// Correctable — shown with correction applied when camera angle is known.
+    case tier2 = 2
+    /// Approximate — shown with warning when camera angle > 30deg.
+    case tier3 = 3
+    /// Unreliable — hidden or grayed out when camera angle > 45deg.
+    case tier4 = 4
+
+    static func < (lhs: MetricConfidence, rhs: MetricConfidence) -> Bool {
+        lhs.rawValue < rhs.rawValue
+    }
+
+    var badge: String? {
+        switch self {
+        case .tier1: return nil
+        case .tier2, .tier3: return "~"
+        case .tier4: return "?"
+        }
+    }
+}
+
 // MARK: - Measurements
 
 struct JumpMeasurements: Sendable {
-    var takeoffLegAngleAtPlant: Double?       // degrees
-    var driveKneeAngleAtTakeoff: Double?      // degrees
-    var torsoLeanDuringCurve: Double?         // degrees
-    var hipShoulderSeparationAtTD: Double?    // degrees
-    var hipShoulderSeparationAtTO: Double?    // degrees
-    var backArchAngle: Double?               // degrees
-    var approachAngleToBar: Double?          // degrees
-    var estimatedGroundContactTime: Double?  // seconds
-    var approachCurveRadius: Double?         // relative units
-    var peakHeight: Double?                  // normalized units
-    var peakClearanceOverBar: Double?        // normalized units (positive = above bar)
-    var jumpRise: Double?                    // normalized units (peak root Y - takeoff root Y)
+    // MARK: Approach
+    var approachSpeed: Double?
+    var approachSpeedProgression: [Double]?
+    var approachAngleToBar: Double?
+    var curveRadius: Double?
+    var stepCount: Int?
+    var stepLengths: [Double]?
+    var stepContactTimes: [Double]?
+    var flightToContactRatio: Double?
+    var inwardBodyLean: Double?
+    var footContactTypes: [FootContactType]?
 
-    // Bar tracking
-    var barKnocked: Bool = false             // true if a body part crossed bar plane during flight
-    var barKnockFrame: Int?                  // frame where the knock was detected
-    var barKnockBodyPart: String?            // which body part knocked it (e.g. "hips", "trail leg")
-    var jumpSuccess: Bool?                   // true = cleared, false = knocked, nil = no bar data
+    // MARK: Penultimate
+    var penultimateCOMHeight: Double?
+    var penultimateShinAngle: Double?
+    var penultimateKneeAngle: Double?
+    var penultimateStepDuration: Double?
+    var penultimateStepLength: Double?
 
-    // Additional metrics
-    var flightTime: Double?                  // seconds (takeoff to landing)
-    var approachSpeed: Double?               // normalized units/frame (average root displacement in approach)
-    var takeoffVerticalVelocity: Double?     // normalized units/frame (root Y velocity at takeoff)
-    var jCurveRadius: Double?                // estimated J-curve radius (normalized)
-    var takeoffDistance: Double?             // horizontal distance from bar at takeoff (normalized)
+    // MARK: Takeoff
+    var takeoffLegKneeAtPlant: Double?
+    var takeoffLegKneeAtToeOff: Double?
+    var driveKneeAngleAtTakeoff: Double?
+    var ankleAngleAtPlant: Double?
+    var anklePlantarflexionAtToeOff: Double?
+    var trailLegKneeAtTouchdown: Double?
+    var takeoffAngle: Double?
+    var backwardLeanAtPlant: Double?
+    var hipShoulderSeparationAtTD: Double?
+    var hipShoulderSeparationAtTO: Double?
+    var verticalVelocityAtToeOff: Double?
+    var horizontalVelocityAtToeOff: Double?
+    var groundContactTime: Double?
+    var takeoffDistanceFromBar: Double?
+    var cmToFootDistanceAtPlant: Double?
+    var comHeightAtToeOff: Double?
+    var trailLegThighPeakVelocity: Double?
 
-    // Real-world measurements (when bar height is known)
-    var barHeightMeters: Double?             // echoed from user input for display
-    var jumpRiseMeters: Double?              // real jump rise in meters
-    var peakClearanceMeters: Double?         // real clearance over bar in meters (+/-)
-    var peakHeightMeters: Double?            // real peak height from ground in meters
-    var metersPerNormalizedUnit: Double?     // scale factor used for conversions
+    // MARK: Peak / Flight
+    var peakCOMHeight: Double?
+    var comRise: Double?
+    var clearanceOverBar: Double?
+    var peakCOMDistanceFromBar: Double?
+    var backTiltAngleAtPeak: Double?
+    var hipElevationOverBar: Double?
+    var headDropTiming: HeadDropTiming?
+    var handsPosition: HandsPosition?
+    var kneeBendInFlight: Double?
 
-    /// Check if a measurement is within the ideal range
-    static func isIdeal(_ value: Double, idealRange: ClosedRange<Double>) -> MeasurementStatus {
+    // MARK: Landing
+    var landingZone: LandingZone?
+    var flightTime: Double?
+    var legClearance: Double?
+
+    // MARK: Bar
+    var barKnocked: Bool = false
+    var barKnockFrame: Int?
+    var barKnockBodyPart: String?
+    var jumpSuccess: Bool?
+
+    // MARK: H1 + H2 + H3 Decomposition
+    var h1: Double?
+    var h2: Double?
+    var h3: Double?
+
+    // MARK: Scale
+    var barHeightMeters: Double?
+    var estimatedAthleteHeight: Double?
+    var pixelsPerMeter: Double?
+    var cameraAngle: Double?
+
+    // MARK: Takeoff leg
+    var takeoffLeg: TakeoffLeg?
+
+    enum TakeoffLeg: String, Sendable, Codable {
+        case left, right
+    }
+
+    enum FootContactType: String, Sendable, Codable {
+        case heelStrike = "Heel Strike"
+        case forefoot = "Forefoot"
+        case midfoot = "Midfoot"
+        case unknown = "Unknown"
+    }
+
+    enum HeadDropTiming: String, Sendable {
+        case beforeHipsCross = "Early (before hips pass bar)"
+        case afterHipsCross = "Correct (after hips pass bar)"
+        case noDropDetected = "No drop detected"
+    }
+
+    enum HandsPosition: String, Sendable {
+        case atHips = "At hips (correct)"
+        case extended = "Extended (should be tucked)"
+        case overhead = "Overhead"
+    }
+
+    enum LandingZone: String, Sendable {
+        case center = "Center of mat"
+        case offCenter = "Off-center"
+        case edge = "Near edge (safety concern)"
+    }
+}
+
+// MARK: - Measurement Status
+
+extension JumpMeasurements {
+    static func status(_ value: Double, idealRange: ClosedRange<Double>) -> MeasurementStatus {
         if idealRange.contains(value) {
             return .good
         }
-
-        let lowerMargin = (idealRange.upperBound - idealRange.lowerBound) * 0.3
-        let extendedRange = (idealRange.lowerBound - lowerMargin)...(idealRange.upperBound + lowerMargin)
-
+        let margin = (idealRange.upperBound - idealRange.lowerBound) * 0.3
+        let extendedRange = (idealRange.lowerBound - margin)...(idealRange.upperBound + margin)
         if extendedRange.contains(value) {
             return .marginal
         }
-
         return .poor
     }
 
-    enum MeasurementStatus {
+    enum MeasurementStatus: Sendable {
         case good, marginal, poor
 
         var color: Color {
@@ -94,7 +217,7 @@ struct JumpMeasurements: Sendable {
     }
 }
 
-// MARK: - Detected Error
+// MARK: - Detected Error (21 types per spec Section 10)
 
 struct DetectedError: Identifiable, Sendable {
     let id: UUID
@@ -102,18 +225,69 @@ struct DetectedError: Identifiable, Sendable {
     let frameRange: ClosedRange<Int>
     let severity: Severity
     let description: String
+    let confidenceTier: MetricConfidence
+
+    init(
+        id: UUID = UUID(),
+        type: ErrorType,
+        frameRange: ClosedRange<Int>,
+        severity: Severity,
+        description: String,
+        confidenceTier: MetricConfidence = .tier1
+    ) {
+        self.id = id
+        self.type = type
+        self.frameRange = frameRange
+        self.severity = severity
+        self.description = description
+        self.confidenceTier = confidenceTier
+    }
 
     enum ErrorType: String, Sendable, CaseIterable {
+        // Approach errors
         case flatteningCurve = "Flattening the Curve"
         case cuttingCurve = "Cutting the Curve"
         case steppingOutOfCurve = "Stepping Out of Curve"
+        case deceleratingOnApproach = "Decelerating on Approach"
+        case inconsistentStepCount = "Inconsistent Step Count"
+        case insufficientInwardLean = "Insufficient Inward Lean"
+
+        // Penultimate/Takeoff errors
+        case overReachingPenultimate = "Over-reaching Penultimate"
         case extendedBodyPosition = "Extended Body Position"
-        case hammockPosition = "Hammock Position"
         case improperTakeoffAngle = "Improper Takeoff Angle"
+        case takeoffFootMisalignment = "Takeoff Foot Misalignment"
+        case incompleteKneeDrive = "Incomplete Knee Drive"
+        case tooCloseToBar = "Too Close to Bar"
+        case tooFarFromBar = "Too Far from Bar"
+        case longGroundContact = "Long Ground Contact"
+
+        // Flight/clearance errors
+        case hammockPosition = "Hammock Position"
         case hipCollapse = "Hip Collapse"
         case insufficientRotation = "Insufficient Rotation"
-        case earlyHeadDrop = "Early Head/Chin Drop"
+        case earlyHeadDrop = "Early Head Drop"
+        case lateLegLift = "Late Leg Lift"
+        case armsNotTucked = "Arms Not Tucked"
+
+        // General
         case barKnock = "Bar Knocked"
+
+        var phase: JumpPhase {
+            switch self {
+            case .flatteningCurve, .cuttingCurve, .steppingOutOfCurve,
+                 .deceleratingOnApproach, .inconsistentStepCount, .insufficientInwardLean:
+                return .approach
+            case .overReachingPenultimate:
+                return .penultimate
+            case .extendedBodyPosition, .improperTakeoffAngle, .takeoffFootMisalignment,
+                 .incompleteKneeDrive, .tooCloseToBar, .tooFarFromBar, .longGroundContact:
+                return .takeoff
+            case .hammockPosition, .hipCollapse, .insufficientRotation,
+                 .earlyHeadDrop, .lateLegLift, .armsNotTucked, .barKnock:
+                return .flight
+            }
+        }
     }
 
     enum Severity: Int, Sendable, Comparable {
@@ -158,24 +332,49 @@ struct Recommendation: Identifiable, Sendable {
     let title: String
     let detail: String
     let relatedError: DetectedError.ErrorType?
-    let priority: Int  // 1 = highest
+    let priority: Int
+    let phase: JumpPhase?
 
-    var icon: String {
-        switch relatedError {
-        case .flatteningCurve, .cuttingCurve, .steppingOutOfCurve:
-            return "arrow.triangle.turn.up.right.diamond.fill"
-        case .extendedBodyPosition, .improperTakeoffAngle:
-            return "figure.stand"
-        case .hammockPosition, .hipCollapse:
-            return "figure.gymnastics"
-        case .insufficientRotation:
-            return "arrow.triangle.2.circlepath"
-        case .earlyHeadDrop:
-            return "eye.fill"
-        case .barKnock:
-            return "xmark.circle"
-        case nil:
-            return "lightbulb.fill"
-        }
+    init(
+        id: UUID = UUID(),
+        title: String,
+        detail: String,
+        relatedError: DetectedError.ErrorType? = nil,
+        priority: Int,
+        phase: JumpPhase? = nil
+    ) {
+        self.id = id
+        self.title = title
+        self.detail = detail
+        self.relatedError = relatedError
+        self.priority = priority
+        self.phase = phase
+    }
+}
+
+// MARK: - Coaching Insight (per spec Section 11)
+
+struct CoachingInsight: Identifiable, Sendable {
+    let id = UUID()
+    let question: String
+    let answer: String
+    let phase: JumpPhase
+    let relatedFrameIndex: Int?
+    let metric: String?
+}
+
+// MARK: - Scale Calibration
+
+struct ScaleCalibration: Sendable {
+    let barEndpoint1: CGPoint
+    let barEndpoint2: CGPoint
+    let barHeightMeters: Double
+    let groundY: Double
+    let pixelsPerMeter: Double
+    let cameraAngle: Double?
+
+    /// Convert a normalized vertical distance to meters.
+    func normalizedToMeters(_ distance: CGFloat) -> Double {
+        Double(distance) / pixelsPerMeter
     }
 }

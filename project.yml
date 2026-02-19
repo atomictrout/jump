@@ -40,8 +40,8 @@ targets:
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: PGXA7T3QCU
     dependencies:
-      - sdk: Vision.framework
       - sdk: AVFoundation.framework
       - sdk: CoreImage.framework
       - sdk: Photos.framework
       - sdk: PhotosUI.framework
+      - sdk: Vision.framework

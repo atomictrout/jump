@@ -3,121 +3,131 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 63;
+	objectVersion = 77;
 	objects = {
 
 /* Begin PBXBuildFile section */
+		08BD8A2D6F88C7A6627A92FD /* TrajectoryValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B4355FCD7EF22D3F02B4015 /* TrajectoryValidator.swift */; };
 		099A36EDAC2DE3ACF73A21DD /* PersonTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32232DCE663E3DF7F4B3A8E2 /* PersonTracker.swift */; };
-		0ED5E801B827999CAF25287F /* PoseDetectionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90564933FCAEF85EF27EA00E /* PoseDetectionService.swift */; };
+		12BD36F29576B590E6FEA8AB /* TakeoffInstantView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55591809C1387251FF5071DC /* TakeoffInstantView.swift */; };
+		16C41BC6F0EAFF9585CEAB38 /* TrackingConfidenceHUD.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE8378A836C9F0C36B5D0590 /* TrackingConfidenceHUD.swift */; };
+		188D38CDCD3EEC6EBA0192C8 /* MiniMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC9F5943D75EAC88AC14B69B /* MiniMapView.swift */; };
+		1AB5D264719D644B4CD9D01D /* BlazePoseService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2C1764C8A03C2D40AAB9B4B /* BlazePoseService.swift */; };
+		1B7A2BA889C7596121D3010B /* ZoomState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09996789EABB1B430B57002F /* ZoomState.swift */; };
+		1E0187FA6ED2389D67D54594 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F42D9CB501DF49375C1F6AA4 /* OnboardingView.swift */; };
+		1E1B8E8B28E377C11C362939 /* PhaseClassifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A3CC6AC02A0611E9B69590C /* PhaseClassifier.swift */; };
 		20F5653F1D435EE891A3C05A /* BodyPose.swift in Sources */ = {isa = PBXBuildFile; fileRef = 577DF8AE2B9EEF6C0EE53C93 /* BodyPose.swift */; };
+		211BE9040E83741C35BC1D5F /* PoseInterpolator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98CC927A5F42023DA8F5BE00 /* PoseInterpolator.swift */; };
 		2384AA3C743DDF53603570A2 /* VideoAnalysisView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61016581F1A5DB157E8818AE /* VideoAnalysisView.swift */; };
 		2ABC1661F58B719D09C51F36 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 65401AADC7861A0BD588DE6E /* Assets.xcassets */; };
+		3CD07E0B092CFA2FE3D61F5B /* FrameAssignment.swift in Sources */ = {isa = PBXBuildFile; fileRef = D79BBA3A23EF31C8E53B5806 /* FrameAssignment.swift */; };
 		447BB1C47D417C3984F93893 /* CoreImage.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 498F8D1EA2BF71A0F3BB0B57 /* CoreImage.framework */; };
+		4E62FF22EC265662D9CA05E9 /* TrackingTimelineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 361D636F523D388BB1B1A533 /* TrackingTimelineView.swift */; };
 		4F52B3EBF981A0B9A6AE8D39 /* CGPoint+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1358049242359C8651669767 /* CGPoint+Extensions.swift */; };
 		52E9E3496879453CD89CEFA0 /* SkeletonOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 857EC4605C590FBFE6C8D0D0 /* SkeletonOverlayView.swift */; };
 		56C7694C0D2606C298FBEE05 /* AngleBadgeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9C8D72C1BEA9AAEF5CD8464 /* AngleBadgeView.swift */; };
+		574BE1C8EB7422AF682DF42F /* ClearanceProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8BFD06362E292CD6A50A9CE /* ClearanceProfileView.swift */; };
+		5883BF2D7C3A3FF8BB0361E0 /* LoupeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18398435710329835873ABFC /* LoupeView.swift */; };
+		60517B9533BF317FBA7D6775 /* DebugVideoExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32DB697AD69709D0B99B39A8 /* DebugVideoExporter.swift */; };
 		63548E28513D3994063651E5 /* CoordinateConverter.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26FAD4EBBF94ACB81E85D34 /* CoordinateConverter.swift */; };
+		6C33772966E69BC7878C705A /* ScaleCalibrator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9D1375D90A25916ED8EC354 /* ScaleCalibrator.swift */; };
+		6CF7C3D7E620488F7F2AA01D /* VisionTrackingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 004156CD5635935D120DC167 /* VisionTrackingService.swift */; };
 		705D5807029702996CEADD21 /* AnalysisResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C88550B81BC1FDF73962192 /* AnalysisResult.swift */; };
+		7563E6C7BC5C34055630D2E1 /* COMCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC882AC1EAFD0A1B3C17B6A4 /* COMCalculator.swift */; };
 		78A8E41B3DDE0268FF017FF6 /* VideoFrameExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EEA33FED5650B09D52AE390 /* VideoFrameExtractor.swift */; };
 		7D06BB231726B5F14A801371 /* FrameScrubberView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 811C91AB1A5E53AAC1BFC47E /* FrameScrubberView.swift */; };
+		7DD6338F1158D2812DC7A163 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A29CED562EDA0E89368A72B /* SettingsView.swift */; };
 		7E0F8CCCFB534670F67E815A /* CameraRecorderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E04AEFD34F8744A60FE23D32 /* CameraRecorderView.swift */; };
+		840AF0A11906A88B9FA14F2B /* SessionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3F023454FA49B37D0803D78 /* SessionViewModel.swift */; };
 		87E4AF559E34D0E9109480DA /* BarHeightParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97EB474C4E65A9EAA49E8218 /* BarHeightParser.swift */; };
 		8B7B3E57176C25FA57D7CE10 /* Photos.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F4C712185EEAF9DF3749CE59 /* Photos.framework */; };
 		8C4721BF565CCD26ACE2DB41 /* Vision.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E7841E55E302CF0A3A96933A /* Vision.framework */; };
 		9192F1021C162EA49E2EEF2F /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4F925A68C1A118D2B1FA29BD /* AVFoundation.framework */; };
-		9C33B3F82F3EB77300502EEA /* PoseDetectionProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C33B3F72F3EB77300502EEA /* PoseDetectionProvider.swift */; };
-		9C7E0B9E2F412CC100488FE6 /* .gitignore in Resources */ = {isa = PBXBuildFile; fileRef = 9C7E0B9D2F412CC100488FE6 /* .gitignore */; };
-		9C7E0BA02F4149C000488FE6 /* HYBRID_SELECTION_IMPLEMENTATION.md in Resources */ = {isa = PBXBuildFile; fileRef = 9C7E0B9F2F4149C000488FE6 /* HYBRID_SELECTION_IMPLEMENTATION.md */; };
-		9C7E0BA22F4149FD00488FE6 /* QUICK_START_GUIDE.md in Resources */ = {isa = PBXBuildFile; fileRef = 9C7E0BA12F4149FD00488FE6 /* QUICK_START_GUIDE.md */; };
-		9C7E0BA42F414A4800488FE6 /* IMPLEMENTATION_SUMMARY.md in Resources */ = {isa = PBXBuildFile; fileRef = 9C7E0BA32F414A4800488FE6 /* IMPLEMENTATION_SUMMARY.md */; };
-		9C7E0BA62F414AAA00488FE6 /* VISUAL_REFERENCE.md in Resources */ = {isa = PBXBuildFile; fileRef = 9C7E0BA52F414AAA00488FE6 /* VISUAL_REFERENCE.md */; };
-		9C7E0BA82F414B3700488FE6 /* MultiPersonOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C7E0BA72F414B3700488FE6 /* MultiPersonOverlay.swift */; };
-		9C7E0BAA2F4153D700488FE6 /* MULTI_PERSON_REVIEW_FEATURE.md in Resources */ = {isa = PBXBuildFile; fileRef = 9C7E0BA92F4153D700488FE6 /* MULTI_PERSON_REVIEW_FEATURE.md */; };
-		9C7E0BAC2F41557700488FE6 /* MULTI_PERSON_REVIEW_FEATURE 2.md in Resources */ = {isa = PBXBuildFile; fileRef = 9C7E0BAB2F41557700488FE6 /* MULTI_PERSON_REVIEW_FEATURE 2.md */; };
-		9C7F54C12F40F635000851C9 /* pose_landmarker_heavy.task in Resources */ = {isa = PBXBuildFile; fileRef = 9C7F54C02F40F635000851C9 /* pose_landmarker_heavy.task */; };
-		9C7F54C32F41104B000851C9 /* VISUAL_SELECTION_GUIDE.md in Resources */ = {isa = PBXBuildFile; fileRef = 9C7F54C22F41104B000851C9 /* VISUAL_SELECTION_GUIDE.md */; };
-		9C7F54C52F411236000851C9 /* NO_ATHLETE_FEATURE.md in Resources */ = {isa = PBXBuildFile; fileRef = 9C7F54C42F411236000851C9 /* NO_ATHLETE_FEATURE.md */; };
-		9C7F54C72F412788000851C9 /* IMPLEMENTATION_COMPLETE.md in Resources */ = {isa = PBXBuildFile; fileRef = 9C7F54C62F412788000851C9 /* IMPLEMENTATION_COMPLETE.md */; };
-		9C7F54C92F4127A7000851C9 /* INTEGRATION_GUIDE.md in Resources */ = {isa = PBXBuildFile; fileRef = 9C7F54C82F4127A7000851C9 /* INTEGRATION_GUIDE.md */; };
-		9C7F54CB2F4128C8000851C9 /* PersonSelectionSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C7F54CA2F4128C8000851C9 /* PersonSelectionSheetView.swift */; };
-		9CB8463D2F40F07D00F8D991 /* MediaPipeSetupGuide.md in Resources */ = {isa = PBXBuildFile; fileRef = 9CB8463C2F40F07D00F8D991 /* MediaPipeSetupGuide.md */; };
-		A993C6ADEC7F6B4A506AF099 /* BarDetectionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E4E404A5CF8554522B535AD /* BarDetectionService.swift */; };
-		AAAA79A42AC7796043F6CADE /* PoseDetectionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F478FA6F4B54C387A1FEE585 /* PoseDetectionViewModel.swift */; };
+		9861D814E960B4C97F9FD97C /* PeakInstantView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76CEC4FA3EC3071C3D77C379 /* PeakInstantView.swift */; };
+		9ABF49F6B6F0DEAEF503B245 /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50F6141D4208CB24D7498C01 /* AppSettings.swift */; };
+		A294CD392E8184E4D84CBD1C /* ReviewBannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9410EA6BDCF5C4158EFD9156 /* ReviewBannerView.swift */; };
+		A397D7B80F6CB5180F75338D /* ShareSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FEEE662C8E0BAC4D44E235C /* ShareSheetView.swift */; };
 		AD79E2FDC283A500F5FAD4D3 /* VideoPlayerViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD1995E3DC811E6A0263A4D9 /* VideoPlayerViewModel.swift */; };
 		AE116CC296F05FE2042F400D /* Color+Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07ED526768C9A1A7BE9BC268 /* Color+Theme.swift */; };
-		AE2A6CF9FFF37F73BD36790D /* AnalysisViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A9627C1726AA3EFFBD32258 /* AnalysisViewModel.swift */; };
 		AFAAB57FE8FD78ED486D4673 /* AngleCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08A2E3BC988D7AF0CB587C3B /* AngleCalculator.swift */; };
-		B3DBCAC72BA16A10407B3B2C /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CFF46E3AB9A692E3057B6B7 /* ContentView.swift */; };
+		B19CF1D57429CC409A84DAAC /* PhaseTimelineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5141253B1EF8DFBF0E09A9BA /* PhaseTimelineView.swift */; };
 		B98E4C59602E4D903BBABEDC /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F25BDE4282851BF6D4B35E7F /* HomeView.swift */; };
+		BDE52AA67819820B3060EACF /* ApproachSummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AE8FA5D202D47FA057B7894 /* ApproachSummaryView.swift */; };
 		C3AB204F2E733F448F2B95FE /* VideoImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48D73A8AC057DCF1A4E8F6D8 /* VideoImportView.swift */; };
 		CA9A9E91E72EE3D1696CF0C8 /* JumpPhase.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE2624596EE4B4AF851D383B /* JumpPhase.swift */; };
-		CAFA71C7188C9963F9D60B40 /* BarDetectionResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31B88A3D36BC33991BEF0B06 /* BarDetectionResult.swift */; };
 		D09F7312F252113EA73FF923 /* ThumbnailGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E2352F47A2B2FD8069895BC /* ThumbnailGenerator.swift */; };
+		D3A5CAC5FC619454B0F1C99B /* Pods_Jump.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 18389A8E646E1032288D0F51 /* Pods_Jump.framework */; };
+		D6339D6814456601484B31C6 /* ResultsPagingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE3D5EBAA42F0E9F2BED0B06 /* ResultsPagingView.swift */; };
 		D67C42F01F1D43B6AD2A6F57 /* JumpApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C4BEDDF4EC4837A0BB8917E /* JumpApp.swift */; };
-		DE07C069584AFAB44D4449CB /* Pods_Jump.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 08FDA1C48008C366EE83AC0D /* Pods_Jump.framework */; };
+		D773F1E7AA4E5758C4F2C3EB /* VideoTrimView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A442AE4664B0A8DF3D5B3B20 /* VideoTrimView.swift */; };
+		E1AC1982A96225561B7B3886 /* pose_landmarker_heavy.task in Resources */ = {isa = PBXBuildFile; fileRef = C260C55D08D950620D429373 /* pose_landmarker_heavy.task */; };
 		EBB899E2B96555AE4F9D41D2 /* AnalysisEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F38AFE3E61955ADEAF262DA /* AnalysisEngine.swift */; };
 		EE15BF65404A7EA7CE8E0EEF /* JumpSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7E5F261262E89D7ACF0B71D /* JumpSession.swift */; };
 		EF74FBCBC5C214C688552A7E /* AnalysisResultsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CF4D324A6AAD96855199295 /* AnalysisResultsView.swift */; };
-		EFA7D831611C9251D48BAC01 /* VideoImportViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA02142AE8C54C90092467BF /* VideoImportViewModel.swift */; };
 		F7EDBDF145B2C84B1D771B11 /* PhotosUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B2298CE78D5D2A5CA33C5247 /* PhotosUI.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		004156CD5635935D120DC167 /* VisionTrackingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisionTrackingService.swift; sourceTree = "<group>"; };
 		07ED526768C9A1A7BE9BC268 /* Color+Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Color+Theme.swift"; sourceTree = "<group>"; };
 		08A2E3BC988D7AF0CB587C3B /* AngleCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AngleCalculator.swift; sourceTree = "<group>"; };
-		08FDA1C48008C366EE83AC0D /* Pods_Jump.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Jump.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		09996789EABB1B430B57002F /* ZoomState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZoomState.swift; sourceTree = "<group>"; };
+		0AE8FA5D202D47FA057B7894 /* ApproachSummaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApproachSummaryView.swift; sourceTree = "<group>"; };
+		0B4355FCD7EF22D3F02B4015 /* TrajectoryValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrajectoryValidator.swift; sourceTree = "<group>"; };
 		1358049242359C8651669767 /* CGPoint+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "CGPoint+Extensions.swift"; sourceTree = "<group>"; };
-		1E4E404A5CF8554522B535AD /* BarDetectionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarDetectionService.swift; sourceTree = "<group>"; };
-		31B88A3D36BC33991BEF0B06 /* BarDetectionResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarDetectionResult.swift; sourceTree = "<group>"; };
+		18389A8E646E1032288D0F51 /* Pods_Jump.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Jump.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		18398435710329835873ABFC /* LoupeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoupeView.swift; sourceTree = "<group>"; };
+		1FEEE662C8E0BAC4D44E235C /* ShareSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareSheetView.swift; sourceTree = "<group>"; };
 		32232DCE663E3DF7F4B3A8E2 /* PersonTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonTracker.swift; sourceTree = "<group>"; };
+		32DB697AD69709D0B99B39A8 /* DebugVideoExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugVideoExporter.swift; sourceTree = "<group>"; };
+		361D636F523D388BB1B1A533 /* TrackingTimelineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackingTimelineView.swift; sourceTree = "<group>"; };
 		3C4BEDDF4EC4837A0BB8917E /* JumpApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JumpApp.swift; sourceTree = "<group>"; };
 		3CF4D324A6AAD96855199295 /* AnalysisResultsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisResultsView.swift; sourceTree = "<group>"; };
 		48D73A8AC057DCF1A4E8F6D8 /* VideoImportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoImportView.swift; sourceTree = "<group>"; };
 		498F8D1EA2BF71A0F3BB0B57 /* CoreImage.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreImage.framework; path = System/Library/Frameworks/CoreImage.framework; sourceTree = SDKROOT; };
-		4A7CCF1240595A5D45AF37E7 /* Pods-Jump.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Jump.release.xcconfig"; path = "Target Support Files/Pods-Jump/Pods-Jump.release.xcconfig"; sourceTree = "<group>"; };
+		4A29CED562EDA0E89368A72B /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		4F925A68C1A118D2B1FA29BD /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
+		50F6141D4208CB24D7498C01 /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
+		5141253B1EF8DFBF0E09A9BA /* PhaseTimelineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhaseTimelineView.swift; sourceTree = "<group>"; };
+		55591809C1387251FF5071DC /* TakeoffInstantView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TakeoffInstantView.swift; sourceTree = "<group>"; };
 		577DF8AE2B9EEF6C0EE53C93 /* BodyPose.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BodyPose.swift; sourceTree = "<group>"; };
-		578CEE0B4D82B99A23473521 /* Pods-Jump.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Jump.debug.xcconfig"; path = "Target Support Files/Pods-Jump/Pods-Jump.debug.xcconfig"; sourceTree = "<group>"; };
-		5A9627C1726AA3EFFBD32258 /* AnalysisViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisViewModel.swift; sourceTree = "<group>"; };
 		61016581F1A5DB157E8818AE /* VideoAnalysisView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoAnalysisView.swift; sourceTree = "<group>"; };
 		65401AADC7861A0BD588DE6E /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		6A3CC6AC02A0611E9B69590C /* PhaseClassifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhaseClassifier.swift; sourceTree = "<group>"; };
+		76CEC4FA3EC3071C3D77C379 /* PeakInstantView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeakInstantView.swift; sourceTree = "<group>"; };
 		7E2352F47A2B2FD8069895BC /* ThumbnailGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThumbnailGenerator.swift; sourceTree = "<group>"; };
 		811C91AB1A5E53AAC1BFC47E /* FrameScrubberView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameScrubberView.swift; sourceTree = "<group>"; };
 		857EC4605C590FBFE6C8D0D0 /* SkeletonOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkeletonOverlayView.swift; sourceTree = "<group>"; };
 		8C88550B81BC1FDF73962192 /* AnalysisResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisResult.swift; sourceTree = "<group>"; };
-		8CFF46E3AB9A692E3057B6B7 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
-		8DB17A5F6183D7511950447A /* Jump.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Jump.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		8DB17A5F6183D7511950447A /* Jump.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Jump.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		8F38AFE3E61955ADEAF262DA /* AnalysisEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisEngine.swift; sourceTree = "<group>"; };
-		90564933FCAEF85EF27EA00E /* PoseDetectionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PoseDetectionService.swift; sourceTree = "<group>"; };
+		919DDB9330D2E021AD8BD556 /* Pods-Jump.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Jump.debug.xcconfig"; path = "Target Support Files/Pods-Jump/Pods-Jump.debug.xcconfig"; sourceTree = "<group>"; };
+		9410EA6BDCF5C4158EFD9156 /* ReviewBannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewBannerView.swift; sourceTree = "<group>"; };
 		97EB474C4E65A9EAA49E8218 /* BarHeightParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarHeightParser.swift; sourceTree = "<group>"; };
-		9C33B3F72F3EB77300502EEA /* PoseDetectionProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PoseDetectionProvider.swift; sourceTree = "<group>"; };
-		9C7E0B9D2F412CC100488FE6 /* .gitignore */ = {isa = PBXFileReference; lastKnownFileType = text; path = .gitignore; sourceTree = "<group>"; };
-		9C7E0B9F2F4149C000488FE6 /* HYBRID_SELECTION_IMPLEMENTATION.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = HYBRID_SELECTION_IMPLEMENTATION.md; sourceTree = "<group>"; };
-		9C7E0BA12F4149FD00488FE6 /* QUICK_START_GUIDE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = QUICK_START_GUIDE.md; sourceTree = "<group>"; };
-		9C7E0BA32F414A4800488FE6 /* IMPLEMENTATION_SUMMARY.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = IMPLEMENTATION_SUMMARY.md; sourceTree = "<group>"; };
-		9C7E0BA52F414AAA00488FE6 /* VISUAL_REFERENCE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = VISUAL_REFERENCE.md; sourceTree = "<group>"; };
-		9C7E0BA72F414B3700488FE6 /* MultiPersonOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultiPersonOverlay.swift; sourceTree = "<group>"; };
-		9C7E0BA92F4153D700488FE6 /* MULTI_PERSON_REVIEW_FEATURE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = MULTI_PERSON_REVIEW_FEATURE.md; sourceTree = "<group>"; };
-		9C7E0BAB2F41557700488FE6 /* MULTI_PERSON_REVIEW_FEATURE 2.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "MULTI_PERSON_REVIEW_FEATURE 2.md"; sourceTree = "<group>"; };
-		9C7F54C02F40F635000851C9 /* pose_landmarker_heavy.task */ = {isa = PBXFileReference; lastKnownFileType = file; path = pose_landmarker_heavy.task; sourceTree = "<group>"; };
-		9C7F54C22F41104B000851C9 /* VISUAL_SELECTION_GUIDE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = VISUAL_SELECTION_GUIDE.md; sourceTree = "<group>"; };
-		9C7F54C42F411236000851C9 /* NO_ATHLETE_FEATURE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = NO_ATHLETE_FEATURE.md; sourceTree = "<group>"; };
-		9C7F54C62F412788000851C9 /* IMPLEMENTATION_COMPLETE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = IMPLEMENTATION_COMPLETE.md; sourceTree = "<group>"; };
-		9C7F54C82F4127A7000851C9 /* INTEGRATION_GUIDE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = INTEGRATION_GUIDE.md; sourceTree = "<group>"; };
-		9C7F54CA2F4128C8000851C9 /* PersonSelectionSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonSelectionSheetView.swift; sourceTree = "<group>"; };
-		9CB8463C2F40F07D00F8D991 /* MediaPipeSetupGuide.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = MediaPipeSetupGuide.md; sourceTree = "<group>"; };
+		98CC927A5F42023DA8F5BE00 /* PoseInterpolator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PoseInterpolator.swift; sourceTree = "<group>"; };
 		9EEA33FED5650B09D52AE390 /* VideoFrameExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoFrameExtractor.swift; sourceTree = "<group>"; };
-		AA02142AE8C54C90092467BF /* VideoImportViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoImportViewModel.swift; sourceTree = "<group>"; };
+		A2C1764C8A03C2D40AAB9B4B /* BlazePoseService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlazePoseService.swift; sourceTree = "<group>"; };
+		A442AE4664B0A8DF3D5B3B20 /* VideoTrimView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoTrimView.swift; sourceTree = "<group>"; };
 		AD1995E3DC811E6A0263A4D9 /* VideoPlayerViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoPlayerViewModel.swift; sourceTree = "<group>"; };
 		B2298CE78D5D2A5CA33C5247 /* PhotosUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = PhotosUI.framework; path = System/Library/Frameworks/PhotosUI.framework; sourceTree = SDKROOT; };
 		B9C8D72C1BEA9AAEF5CD8464 /* AngleBadgeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AngleBadgeView.swift; sourceTree = "<group>"; };
+		B9D1375D90A25916ED8EC354 /* ScaleCalibrator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScaleCalibrator.swift; sourceTree = "<group>"; };
+		BE3D5EBAA42F0E9F2BED0B06 /* ResultsPagingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResultsPagingView.swift; sourceTree = "<group>"; };
+		C260C55D08D950620D429373 /* pose_landmarker_heavy.task */ = {isa = PBXFileReference; path = pose_landmarker_heavy.task; sourceTree = "<group>"; };
 		C7E5F261262E89D7ACF0B71D /* JumpSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JumpSession.swift; sourceTree = "<group>"; };
 		D26FAD4EBBF94ACB81E85D34 /* CoordinateConverter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoordinateConverter.swift; sourceTree = "<group>"; };
+		D79BBA3A23EF31C8E53B5806 /* FrameAssignment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameAssignment.swift; sourceTree = "<group>"; };
+		DC9F5943D75EAC88AC14B69B /* MiniMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiniMapView.swift; sourceTree = "<group>"; };
+		DFC49D3C79D8E23DAAD8F3BE /* Pods-Jump.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Jump.release.xcconfig"; path = "Target Support Files/Pods-Jump/Pods-Jump.release.xcconfig"; sourceTree = "<group>"; };
 		E04AEFD34F8744A60FE23D32 /* CameraRecorderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraRecorderView.swift; sourceTree = "<group>"; };
 		E7841E55E302CF0A3A96933A /* Vision.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Vision.framework; path = System/Library/Frameworks/Vision.framework; sourceTree = SDKROOT; };
+		EE8378A836C9F0C36B5D0590 /* TrackingConfidenceHUD.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackingConfidenceHUD.swift; sourceTree = "<group>"; };
 		F25BDE4282851BF6D4B35E7F /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
-		F478FA6F4B54C387A1FEE585 /* PoseDetectionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PoseDetectionViewModel.swift; sourceTree = "<group>"; };
+		F3F023454FA49B37D0803D78 /* SessionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionViewModel.swift; sourceTree = "<group>"; };
+		F42D9CB501DF49375C1F6AA4 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		F4C712185EEAF9DF3749CE59 /* Photos.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Photos.framework; path = System/Library/Frameworks/Photos.framework; sourceTree = SDKROOT; };
+		F8BFD06362E292CD6A50A9CE /* ClearanceProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClearanceProfileView.swift; sourceTree = "<group>"; };
+		FC882AC1EAFD0A1B3C17B6A4 /* COMCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = COMCalculator.swift; sourceTree = "<group>"; };
 		FE2624596EE4B4AF851D383B /* JumpPhase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JumpPhase.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -126,12 +136,12 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				8C4721BF565CCD26ACE2DB41 /* Vision.framework in Frameworks */,
 				9192F1021C162EA49E2EEF2F /* AVFoundation.framework in Frameworks */,
 				447BB1C47D417C3984F93893 /* CoreImage.framework in Frameworks */,
 				8B7B3E57176C25FA57D7CE10 /* Photos.framework in Frameworks */,
 				F7EDBDF145B2C84B1D771B11 /* PhotosUI.framework in Frameworks */,
-				DE07C069584AFAB44D4449CB /* Pods_Jump.framework in Frameworks */,
+				8C4721BF565CCD26ACE2DB41 /* Vision.framework in Frameworks */,
+				D3A5CAC5FC619454B0F1C99B /* Pods_Jump.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -142,6 +152,7 @@
 			isa = PBXGroup;
 			children = (
 				08A2E3BC988D7AF0CB587C3B /* AngleCalculator.swift */,
+				50F6141D4208CB24D7498C01 /* AppSettings.swift */,
 				97EB474C4E65A9EAA49E8218 /* BarHeightParser.swift */,
 				1358049242359C8651669767 /* CGPoint+Extensions.swift */,
 				07ED526768C9A1A7BE9BC268 /* Color+Theme.swift */,
@@ -154,26 +165,22 @@
 			isa = PBXGroup;
 			children = (
 				8C88550B81BC1FDF73962192 /* AnalysisResult.swift */,
-				31B88A3D36BC33991BEF0B06 /* BarDetectionResult.swift */,
 				577DF8AE2B9EEF6C0EE53C93 /* BodyPose.swift */,
+				D79BBA3A23EF31C8E53B5806 /* FrameAssignment.swift */,
 				FE2624596EE4B4AF851D383B /* JumpPhase.swift */,
 				C7E5F261262E89D7ACF0B71D /* JumpSession.swift */,
-				9C7F54CA2F4128C8000851C9 /* PersonSelectionSheetView.swift */,
-				9C7E0B9F2F4149C000488FE6 /* HYBRID_SELECTION_IMPLEMENTATION.md */,
-				9C7E0BA12F4149FD00488FE6 /* QUICK_START_GUIDE.md */,
-				9C7E0BA32F414A4800488FE6 /* IMPLEMENTATION_SUMMARY.md */,
-				9C7E0BA52F414AAA00488FE6 /* VISUAL_REFERENCE.md */,
-				9C7E0BA72F414B3700488FE6 /* MultiPersonOverlay.swift */,
+				09996789EABB1B430B57002F /* ZoomState.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
 		};
-		45F64996FF221C70A6BAB722 /* Pods */ = {
+		2AC8EE70E20A04F3DB671D13 /* Pods */ = {
 			isa = PBXGroup;
 			children = (
-				578CEE0B4D82B99A23473521 /* Pods-Jump.debug.xcconfig */,
-				4A7CCF1240595A5D45AF37E7 /* Pods-Jump.release.xcconfig */,
+				919DDB9330D2E021AD8BD556 /* Pods-Jump.debug.xcconfig */,
+				DFC49D3C79D8E23DAAD8F3BE /* Pods-Jump.release.xcconfig */,
 			);
+			name = Pods;
 			path = Pods;
 			sourceTree = "<group>";
 		};
@@ -181,11 +188,17 @@
 			isa = PBXGroup;
 			children = (
 				8F38AFE3E61955ADEAF262DA /* AnalysisEngine.swift */,
-				1E4E404A5CF8554522B535AD /* BarDetectionService.swift */,
+				A2C1764C8A03C2D40AAB9B4B /* BlazePoseService.swift */,
+				FC882AC1EAFD0A1B3C17B6A4 /* COMCalculator.swift */,
+				32DB697AD69709D0B99B39A8 /* DebugVideoExporter.swift */,
 				32232DCE663E3DF7F4B3A8E2 /* PersonTracker.swift */,
-				90564933FCAEF85EF27EA00E /* PoseDetectionService.swift */,
+				6A3CC6AC02A0611E9B69590C /* PhaseClassifier.swift */,
+				98CC927A5F42023DA8F5BE00 /* PoseInterpolator.swift */,
+				B9D1375D90A25916ED8EC354 /* ScaleCalibrator.swift */,
 				7E2352F47A2B2FD8069895BC /* ThumbnailGenerator.swift */,
+				0B4355FCD7EF22D3F02B4015 /* TrajectoryValidator.swift */,
 				9EEA33FED5650B09D52AE390 /* VideoFrameExtractor.swift */,
+				004156CD5635935D120DC167 /* VisionTrackingService.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -194,6 +207,7 @@
 			isa = PBXGroup;
 			children = (
 				65401AADC7861A0BD588DE6E /* Assets.xcassets */,
+				C260C55D08D950620D429373 /* pose_landmarker_heavy.task */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -201,14 +215,8 @@
 		7D6AAAFC546FF7C190F3D706 /* ViewModels */ = {
 			isa = PBXGroup;
 			children = (
-				5A9627C1726AA3EFFBD32258 /* AnalysisViewModel.swift */,
-				F478FA6F4B54C387A1FEE585 /* PoseDetectionViewModel.swift */,
-				AA02142AE8C54C90092467BF /* VideoImportViewModel.swift */,
+				F3F023454FA49B37D0803D78 /* SessionViewModel.swift */,
 				AD1995E3DC811E6A0263A4D9 /* VideoPlayerViewModel.swift */,
-				9C7F54C22F41104B000851C9 /* VISUAL_SELECTION_GUIDE.md */,
-				9C7F54C42F411236000851C9 /* NO_ATHLETE_FEATURE.md */,
-				9C7F54C62F412788000851C9 /* IMPLEMENTATION_COMPLETE.md */,
-				9C7F54C82F4127A7000851C9 /* INTEGRATION_GUIDE.md */,
 			);
 			path = ViewModels;
 			sourceTree = "<group>";
@@ -218,16 +226,27 @@
 			children = (
 				3CF4D324A6AAD96855199295 /* AnalysisResultsView.swift */,
 				B9C8D72C1BEA9AAEF5CD8464 /* AngleBadgeView.swift */,
+				0AE8FA5D202D47FA057B7894 /* ApproachSummaryView.swift */,
 				E04AEFD34F8744A60FE23D32 /* CameraRecorderView.swift */,
+				F8BFD06362E292CD6A50A9CE /* ClearanceProfileView.swift */,
 				811C91AB1A5E53AAC1BFC47E /* FrameScrubberView.swift */,
 				F25BDE4282851BF6D4B35E7F /* HomeView.swift */,
+				18398435710329835873ABFC /* LoupeView.swift */,
+				DC9F5943D75EAC88AC14B69B /* MiniMapView.swift */,
+				F42D9CB501DF49375C1F6AA4 /* OnboardingView.swift */,
+				76CEC4FA3EC3071C3D77C379 /* PeakInstantView.swift */,
+				5141253B1EF8DFBF0E09A9BA /* PhaseTimelineView.swift */,
+				BE3D5EBAA42F0E9F2BED0B06 /* ResultsPagingView.swift */,
+				9410EA6BDCF5C4158EFD9156 /* ReviewBannerView.swift */,
+				4A29CED562EDA0E89368A72B /* SettingsView.swift */,
+				1FEEE662C8E0BAC4D44E235C /* ShareSheetView.swift */,
 				857EC4605C590FBFE6C8D0D0 /* SkeletonOverlayView.swift */,
+				55591809C1387251FF5071DC /* TakeoffInstantView.swift */,
+				EE8378A836C9F0C36B5D0590 /* TrackingConfidenceHUD.swift */,
+				361D636F523D388BB1B1A533 /* TrackingTimelineView.swift */,
 				61016581F1A5DB157E8818AE /* VideoAnalysisView.swift */,
 				48D73A8AC057DCF1A4E8F6D8 /* VideoImportView.swift */,
-				9C33B3F72F3EB77300502EEA /* PoseDetectionProvider.swift */,
-				9CB8463C2F40F07D00F8D991 /* MediaPipeSetupGuide.md */,
-				9C7E0BA92F4153D700488FE6 /* MULTI_PERSON_REVIEW_FEATURE.md */,
-				9C7E0BAB2F41557700488FE6 /* MULTI_PERSON_REVIEW_FEATURE 2.md */,
+				A442AE4664B0A8DF3D5B3B20 /* VideoTrimView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -243,12 +262,10 @@
 		B04AD9EB6386DCEF6325CC98 = {
 			isa = PBXGroup;
 			children = (
-				9C7F54C02F40F635000851C9 /* pose_landmarker_heavy.task */,
 				E44BA6BDD162C2C7F8A6103C /* Jump */,
 				B6E3C37CCF868A3474C6EBDE /* Frameworks */,
 				995F8666E13C9C1E87E218AF /* Products */,
-				45F64996FF221C70A6BAB722 /* Pods */,
-				9C7E0B9D2F412CC100488FE6 /* .gitignore */,
+				2AC8EE70E20A04F3DB671D13 /* Pods */,
 			);
 			sourceTree = "<group>";
 		};
@@ -260,7 +277,7 @@
 				F4C712185EEAF9DF3749CE59 /* Photos.framework */,
 				B2298CE78D5D2A5CA33C5247 /* PhotosUI.framework */,
 				E7841E55E302CF0A3A96933A /* Vision.framework */,
-				08FDA1C48008C366EE83AC0D /* Pods_Jump.framework */,
+				18389A8E646E1032288D0F51 /* Pods_Jump.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -268,7 +285,6 @@
 		E44BA6BDD162C2C7F8A6103C /* Jump */ = {
 			isa = PBXGroup;
 			children = (
-				8CFF46E3AB9A692E3057B6B7 /* ContentView.swift */,
 				3C4BEDDF4EC4837A0BB8917E /* JumpApp.swift */,
 				2616A8DB301C438E4A4CBC37 /* Models */,
 				6E54760FAF05A6AFEE194524 /* Resources */,
@@ -287,7 +303,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = A0BCF85613A6EFD55756EA66 /* Build configuration list for PBXNativeTarget "Jump" */;
 			buildPhases = (
-				EB14FFE8DDA77FD1E5CEA009 /* [CP] Check Pods Manifest.lock */,
+				94F807A60A136C8C178D3F31 /* [CP] Check Pods Manifest.lock */,
 				176E2057084D91AFC2F89D02 /* Sources */,
 				21984A93B617F449766C25EE /* Resources */,
 				A2A5C2ED470ABEC34031C6C3 /* Frameworks */,
@@ -297,8 +313,6 @@
 			dependencies = (
 			);
 			name = Jump;
-			packageProductDependencies = (
-			);
 			productName = Jump;
 			productReference = 8DB17A5F6183D7511950447A /* Jump.app */;
 			productType = "com.apple.product-type.application";
@@ -328,8 +342,7 @@
 			);
 			mainGroup = B04AD9EB6386DCEF6325CC98;
 			minimizedProjectReferenceProxies = 1;
-			packageReferences = (
-			);
+			preferredProjectObjectVersion = 77;
 			productRefGroup = 995F8666E13C9C1E87E218AF /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -344,27 +357,15 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				9C7E0BA42F414A4800488FE6 /* IMPLEMENTATION_SUMMARY.md in Resources */,
-				9C7E0B9E2F412CC100488FE6 /* .gitignore in Resources */,
-				9CB8463D2F40F07D00F8D991 /* MediaPipeSetupGuide.md in Resources */,
-				9C7F54C72F412788000851C9 /* IMPLEMENTATION_COMPLETE.md in Resources */,
-				9C7E0BA62F414AAA00488FE6 /* VISUAL_REFERENCE.md in Resources */,
-				9C7E0BAA2F4153D700488FE6 /* MULTI_PERSON_REVIEW_FEATURE.md in Resources */,
-				9C7F54C12F40F635000851C9 /* pose_landmarker_heavy.task in Resources */,
-				9C7F54C92F4127A7000851C9 /* INTEGRATION_GUIDE.md in Resources */,
-				9C7F54C32F41104B000851C9 /* VISUAL_SELECTION_GUIDE.md in Resources */,
 				2ABC1661F58B719D09C51F36 /* Assets.xcassets in Resources */,
-				9C7E0BA02F4149C000488FE6 /* HYBRID_SELECTION_IMPLEMENTATION.md in Resources */,
-				9C7E0BA22F4149FD00488FE6 /* QUICK_START_GUIDE.md in Resources */,
-				9C7E0BAC2F41557700488FE6 /* MULTI_PERSON_REVIEW_FEATURE 2.md in Resources */,
-				9C7F54C52F411236000851C9 /* NO_ATHLETE_FEATURE.md in Resources */,
+				E1AC1982A96225561B7B3886 /* pose_landmarker_heavy.task in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		EB14FFE8DDA77FD1E5CEA009 /* [CP] Check Pods Manifest.lock */ = {
+		94F807A60A136C8C178D3F31 /* [CP] Check Pods Manifest.lock */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -396,36 +397,53 @@
 				EBB899E2B96555AE4F9D41D2 /* AnalysisEngine.swift in Sources */,
 				705D5807029702996CEADD21 /* AnalysisResult.swift in Sources */,
 				EF74FBCBC5C214C688552A7E /* AnalysisResultsView.swift in Sources */,
-				AE2A6CF9FFF37F73BD36790D /* AnalysisViewModel.swift in Sources */,
 				56C7694C0D2606C298FBEE05 /* AngleBadgeView.swift in Sources */,
 				AFAAB57FE8FD78ED486D4673 /* AngleCalculator.swift in Sources */,
-				CAFA71C7188C9963F9D60B40 /* BarDetectionResult.swift in Sources */,
-				A993C6ADEC7F6B4A506AF099 /* BarDetectionService.swift in Sources */,
+				9ABF49F6B6F0DEAEF503B245 /* AppSettings.swift in Sources */,
+				BDE52AA67819820B3060EACF /* ApproachSummaryView.swift in Sources */,
 				87E4AF559E34D0E9109480DA /* BarHeightParser.swift in Sources */,
+				1AB5D264719D644B4CD9D01D /* BlazePoseService.swift in Sources */,
 				20F5653F1D435EE891A3C05A /* BodyPose.swift in Sources */,
-				9C7F54CB2F4128C8000851C9 /* PersonSelectionSheetView.swift in Sources */,
 				4F52B3EBF981A0B9A6AE8D39 /* CGPoint+Extensions.swift in Sources */,
+				7563E6C7BC5C34055630D2E1 /* COMCalculator.swift in Sources */,
 				7E0F8CCCFB534670F67E815A /* CameraRecorderView.swift in Sources */,
+				574BE1C8EB7422AF682DF42F /* ClearanceProfileView.swift in Sources */,
 				AE116CC296F05FE2042F400D /* Color+Theme.swift in Sources */,
-				B3DBCAC72BA16A10407B3B2C /* ContentView.swift in Sources */,
 				63548E28513D3994063651E5 /* CoordinateConverter.swift in Sources */,
+				60517B9533BF317FBA7D6775 /* DebugVideoExporter.swift in Sources */,
+				3CD07E0B092CFA2FE3D61F5B /* FrameAssignment.swift in Sources */,
 				7D06BB231726B5F14A801371 /* FrameScrubberView.swift in Sources */,
 				B98E4C59602E4D903BBABEDC /* HomeView.swift in Sources */,
 				D67C42F01F1D43B6AD2A6F57 /* JumpApp.swift in Sources */,
 				CA9A9E91E72EE3D1696CF0C8 /* JumpPhase.swift in Sources */,
 				EE15BF65404A7EA7CE8E0EEF /* JumpSession.swift in Sources */,
-				9C7E0BA82F414B3700488FE6 /* MultiPersonOverlay.swift in Sources */,
+				5883BF2D7C3A3FF8BB0361E0 /* LoupeView.swift in Sources */,
+				188D38CDCD3EEC6EBA0192C8 /* MiniMapView.swift in Sources */,
+				1E0187FA6ED2389D67D54594 /* OnboardingView.swift in Sources */,
+				9861D814E960B4C97F9FD97C /* PeakInstantView.swift in Sources */,
 				099A36EDAC2DE3ACF73A21DD /* PersonTracker.swift in Sources */,
-				0ED5E801B827999CAF25287F /* PoseDetectionService.swift in Sources */,
-				AAAA79A42AC7796043F6CADE /* PoseDetectionViewModel.swift in Sources */,
+				1E1B8E8B28E377C11C362939 /* PhaseClassifier.swift in Sources */,
+				B19CF1D57429CC409A84DAAC /* PhaseTimelineView.swift in Sources */,
+				211BE9040E83741C35BC1D5F /* PoseInterpolator.swift in Sources */,
+				D6339D6814456601484B31C6 /* ResultsPagingView.swift in Sources */,
+				A294CD392E8184E4D84CBD1C /* ReviewBannerView.swift in Sources */,
+				6C33772966E69BC7878C705A /* ScaleCalibrator.swift in Sources */,
+				840AF0A11906A88B9FA14F2B /* SessionViewModel.swift in Sources */,
+				7DD6338F1158D2812DC7A163 /* SettingsView.swift in Sources */,
+				A397D7B80F6CB5180F75338D /* ShareSheetView.swift in Sources */,
 				52E9E3496879453CD89CEFA0 /* SkeletonOverlayView.swift in Sources */,
+				12BD36F29576B590E6FEA8AB /* TakeoffInstantView.swift in Sources */,
 				D09F7312F252113EA73FF923 /* ThumbnailGenerator.swift in Sources */,
-				9C33B3F82F3EB77300502EEA /* PoseDetectionProvider.swift in Sources */,
+				16C41BC6F0EAFF9585CEAB38 /* TrackingConfidenceHUD.swift in Sources */,
+				4E62FF22EC265662D9CA05E9 /* TrackingTimelineView.swift in Sources */,
+				08BD8A2D6F88C7A6627A92FD /* TrajectoryValidator.swift in Sources */,
 				2384AA3C743DDF53603570A2 /* VideoAnalysisView.swift in Sources */,
 				78A8E41B3DDE0268FF017FF6 /* VideoFrameExtractor.swift in Sources */,
 				C3AB204F2E733F448F2B95FE /* VideoImportView.swift in Sources */,
-				EFA7D831611C9251D48BAC01 /* VideoImportViewModel.swift in Sources */,
 				AD79E2FDC283A500F5FAD4D3 /* VideoPlayerViewModel.swift in Sources */,
+				D773F1E7AA4E5758C4F2C3EB /* VideoTrimView.swift in Sources */,
+				6CF7C3D7E620488F7F2AA01D /* VisionTrackingService.swift in Sources */,
+				1B7A2BA889C7596121D3010B /* ZoomState.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -434,7 +452,7 @@
 /* Begin XCBuildConfiguration section */
 		0C1A6341B5761EAA7F9217C4 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 578CEE0B4D82B99A23473521 /* Pods-Jump.debug.xcconfig */;
+			baseConfigurationReference = 919DDB9330D2E021AD8BD556 /* Pods-Jump.debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -587,7 +605,7 @@
 		};
 		BFBEEAC8C9AC3B930A3513C4 /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 4A7CCF1240595A5D45AF37E7 /* Pods-Jump.release.xcconfig */;
+			baseConfigurationReference = DFC49D3C79D8E23DAAD8F3BE /* Pods-Jump.release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;

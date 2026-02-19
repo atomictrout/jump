@@ -1,6 +1,12 @@
 import SwiftUI
 
-enum JumpPhase: String, CaseIterable, Sendable, Identifiable {
+/// Jump phases for frame classification.
+///
+/// Every frame in the video is classified into one of these categories.
+/// This enables phase-specific metric display, color-coded timeline,
+/// and quick-jump navigation.
+enum JumpPhase: String, CaseIterable, Sendable, Identifiable, Codable {
+    case noAthlete = "No Athlete"
     case approach = "Approach"
     case penultimate = "Penultimate"
     case takeoff = "Takeoff"
@@ -11,6 +17,7 @@ enum JumpPhase: String, CaseIterable, Sendable, Identifiable {
 
     var color: Color {
         switch self {
+        case .noAthlete: return .phaseNoAthlete
         case .approach: return .phaseApproach
         case .penultimate: return .phasePenultimate
         case .takeoff: return .phaseTakeoff
@@ -21,6 +28,7 @@ enum JumpPhase: String, CaseIterable, Sendable, Identifiable {
 
     var icon: String {
         switch self {
+        case .noAthlete: return "person.slash"
         case .approach: return "figure.run"
         case .penultimate: return "arrow.down.right"
         case .takeoff: return "arrow.up.forward"
@@ -31,6 +39,8 @@ enum JumpPhase: String, CaseIterable, Sendable, Identifiable {
 
     var description: String {
         switch self {
+        case .noAthlete:
+            return "Athlete not in frame"
         case .approach:
             return "J-curve run-up building speed toward the bar"
         case .penultimate:
@@ -42,5 +52,10 @@ enum JumpPhase: String, CaseIterable, Sendable, Identifiable {
         case .landing:
             return "Contact with the landing mat"
         }
+    }
+
+    /// Whether this is an active phase where the athlete is performing.
+    var isActive: Bool {
+        self != .noAthlete
     }
 }

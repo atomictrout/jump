@@ -1,130 +1,122 @@
 import SwiftUI
 
-struct AnalysisResultsView: View {
+/// Full analysis results display.
+/// Shows phase timeline, measurements, errors, recommendations, and coaching insights.
+struct ResultsDisplayView: View {
     let result: AnalysisResult
     let session: JumpSession
     let onJumpToFrame: (Int) -> Void
 
-    @Environment(\.dismiss) private var dismiss
-    @State private var analysisVM = AnalysisViewModel()
-
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 24) {
-                    // Jump Result Banner (Success / Fail)
-                    if let success = result.measurements.jumpSuccess {
-                        jumpResultBanner(success: success)
-                            .padding(.horizontal)
-                    }
+        ScrollView {
+            VStack(spacing: 24) {
+                // Jump Result Banner
+                if let success = result.measurements.jumpSuccess {
+                    jumpResultBanner(success: success)
+                }
 
-                    // Phase Timeline
-                    phaseTimeline
-                        .padding(.horizontal)
+                // Key Metrics Header
+                keyMetricsGrid
 
-                    // Measurements
-                    measurementsSection
-                        .padding(.horizontal)
+                // Measurements by Phase
+                measurementsSection
 
-                    // Jump Height & Bar Status
-                    let heights = analysisVM.heightDisplays(from: result.measurements)
-                    if !heights.isEmpty {
-                        heightSection(heights: heights)
-                            .padding(.horizontal)
-                    }
+                // Height Decomposition
+                heightSection
 
-                    // Performance Metrics
-                    let performance = analysisVM.performanceDisplays(from: result.measurements)
-                    if !performance.isEmpty {
-                        performanceSection(metrics: performance)
-                            .padding(.horizontal)
-                    }
+                // Errors
+                if !result.errors.isEmpty {
+                    errorsSection
+                }
 
-                    // Errors
-                    if !result.errors.isEmpty {
-                        errorsSection
-                            .padding(.horizontal)
-                    }
-
-                    // Recommendations
+                // Recommendations
+                if !result.recommendations.isEmpty {
                     recommendationsSection
-                        .padding(.horizontal)
+                }
 
-                    Spacer(minLength: 40)
+                // Coaching Insights
+                if !result.coachingInsights.isEmpty {
+                    coachingSection
                 }
-                .padding(.top)
+
+                Spacer(minLength: 40)
             }
-            .background(Color.jumpBackgroundTop)
-            .navigationTitle("Analysis Results")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
-                        .foregroundStyle(.jumpAccent)
+            .padding()
+        }
+        .background(Color.jumpBackgroundTop)
+    }
+
+    // MARK: - Jump Result Banner
+
+    private func jumpResultBanner(success: Bool) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: success ? "checkmark.circle.fill" : "xmark.circle.fill")
+                .font(.title)
+                .foregroundStyle(success ? .green : .red)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(success ? "CLEARED" : "KNOCKED")
+                    .font(.headline.bold())
+                    .foregroundStyle(success ? .green : .red)
+                if let part = result.measurements.barKnockBodyPart, !success {
+                    Text("Contact: \(part)")
+                        .font(.caption)
+                        .foregroundStyle(.jumpSubtle)
                 }
+            }
+
+            Spacer()
+
+            if let barHeight = result.measurements.barHeightMeters {
+                Text(String(format: "%.2fm", barHeight))
+                    .font(.system(.title, design: .rounded).bold())
+                    .foregroundStyle(.white)
+            }
+        }
+        .padding()
+        .background((success ? Color.green : Color.red).opacity(0.12))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    // MARK: - Key Metrics Grid
+
+    private var keyMetricsGrid: some View {
+        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+            if let angle = result.measurements.takeoffAngle {
+                metricCell(label: "Takeoff Angle", value: String(format: "%.0f\u{00B0}", angle), icon: "arrow.up.forward.circle")
+            }
+            if let clearance = result.measurements.clearanceOverBar {
+                let sign = clearance >= 0 ? "+" : ""
+                metricCell(label: "Bar Clearance", value: String(format: "%@%.0fcm", sign, clearance * 100), icon: "arrow.up.to.line")
+            }
+            if let gct = result.measurements.groundContactTime {
+                metricCell(label: "Ground Contact", value: String(format: "%.3fs", gct), icon: "shoe.fill")
+            }
+            if let flightTime = result.measurements.flightTime {
+                metricCell(label: "Flight Time", value: String(format: "%.2fs", flightTime), icon: "timer")
             }
         }
     }
 
-    // MARK: - Phase Timeline
-
-    private var phaseTimeline: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label("Jump Phases", systemImage: "timeline.selection")
-                .font(.headline)
+    private func metricCell(label: String, value: String, icon: String) -> some View {
+        VStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.title3)
+                .foregroundStyle(.jumpAccent)
+            Text(value)
+                .font(.system(.title2, design: .monospaced).bold())
                 .foregroundStyle(.white)
-
-            // Timeline bar
-            GeometryReader { geo in
-                HStack(spacing: 2) {
-                    ForEach(result.phases) { phase in
-                        let width = phaseWidth(phase, totalFrames: session.totalFrames, containerWidth: geo.size.width)
-
-                        Button {
-                            onJumpToFrame(phase.startFrame)
-                        } label: {
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(phase.phase.color)
-                                .frame(width: max(width, 20))
-                                .overlay {
-                                    if width > 40 {
-                                        Text(phase.phase.rawValue)
-                                            .font(.system(size: 9, weight: .bold))
-                                            .foregroundStyle(.white.opacity(0.9))
-                                            .lineLimit(1)
-                                    }
-                                }
-                        }
-                    }
-                }
-            }
-            .frame(height: 32)
-
-            // Phase legend
-            HStack(spacing: 12) {
-                ForEach(result.phases) { phase in
-                    HStack(spacing: 4) {
-                        Circle()
-                            .fill(phase.phase.color)
-                            .frame(width: 8, height: 8)
-                        Text(phase.phase.rawValue)
-                            .font(.caption2)
-                            .foregroundStyle(.jumpSubtle)
-                    }
-                }
-            }
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(.jumpSubtle)
         }
-        .jumpCard()
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+        .background(Color.jumpCard)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
-    private func phaseWidth(_ phase: DetectedPhase, totalFrames: Int, containerWidth: CGFloat) -> CGFloat {
-        guard totalFrames > 0 else { return 0 }
-        let proportion = CGFloat(phase.frameCount) / CGFloat(totalFrames)
-        return (containerWidth - CGFloat(result.phases.count - 1) * 2 - 32) * proportion
-    }
-
-    // MARK: - Measurements
+    // MARK: - Measurements Section
 
     private var measurementsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -132,115 +124,85 @@ struct AnalysisResultsView: View {
                 .font(.headline)
                 .foregroundStyle(.white)
 
-            let displays = analysisVM.measurementDisplays(from: result.measurements)
-
-            ForEach(displays) { measurement in
+            let displays = buildMeasurementDisplays()
+            ForEach(Array(displays.enumerated()), id: \.offset) { _, item in
                 HStack {
-                    Image(systemName: measurement.status.icon)
-                        .foregroundStyle(measurement.status.color)
+                    Image(systemName: item.statusIcon)
+                        .foregroundStyle(item.statusColor)
                         .frame(width: 24)
 
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(measurement.name)
+                        Text(item.name)
                             .font(.subheadline)
                             .foregroundStyle(.white)
-                        Text("Ideal: \(measurement.idealRangeText)")
+                        Text("Ideal: \(item.idealRange)")
                             .font(.caption)
                             .foregroundStyle(.jumpSubtle)
                     }
 
                     Spacer()
 
-                    Text(measurement.formattedValue)
-                        .font(.system(.title3, design: .monospaced).bold())
-                        .foregroundStyle(measurement.status.color)
+                    Text(item.formattedValue)
+                        .font(.system(.subheadline, design: .monospaced).bold())
+                        .foregroundStyle(item.statusColor)
                 }
                 .padding(.vertical, 4)
-
-                if measurement.id != displays.last?.id {
-                    Divider()
-                        .overlay(Color.jumpSubtle.opacity(0.3))
-                }
             }
         }
         .jumpCard()
     }
 
-    // MARK: - Jump Height
+    // MARK: - Height Section
 
-    private func heightSection(heights: [AnalysisViewModel.HeightDisplay]) -> some View {
+    private var heightSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Jump Height", systemImage: "arrow.up.circle")
+            Label("Height Analysis", systemImage: "arrow.up.circle")
                 .font(.headline)
                 .foregroundStyle(.white)
 
-            ForEach(heights) { height in
-                HStack {
-                    Image(systemName: height.icon)
-                        .foregroundStyle(height.color)
-                        .frame(width: 24)
-
-                    Text(height.name)
-                        .font(.subheadline)
-                        .foregroundStyle(.white)
-
-                    Spacer()
-
-                    Text(height.formattedValue)
-                        .font(.system(.subheadline, design: .monospaced).bold())
-                        .foregroundStyle(height.color)
+            if let h1 = result.measurements.h1, let h2 = result.measurements.h2, let h3 = result.measurements.h3 {
+                VStack(spacing: 8) {
+                    heightBar(label: "H1 (COM at takeoff)", value: h1, color: .jumpAccent)
+                    heightBar(label: "H2 (COM rise)", value: h2, color: .phaseFlight)
+                    heightBar(label: "H3 (clearance efficiency)", value: h3, color: h3 < 0 ? .green : .red)
                 }
-                .padding(.vertical, 4)
+            }
 
-                if height.id != heights.last?.id {
-                    Divider()
-                        .overlay(Color.jumpSubtle.opacity(0.3))
+            if let peak = result.measurements.peakCOMHeight {
+                HStack {
+                    Text("Peak COM Height")
+                        .font(.caption)
+                        .foregroundStyle(.jumpSubtle)
+                    Spacer()
+                    Text(String(format: "%.2fm", peak))
+                        .font(.system(.subheadline, design: .monospaced).bold())
+                        .foregroundStyle(.white)
                 }
             }
         }
         .jumpCard()
     }
 
-    // MARK: - Performance Metrics
+    private func heightBar(label: String, value: Double, color: Color) -> some View {
+        HStack {
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.jumpSubtle)
+                .frame(width: 160, alignment: .leading)
 
-    private func performanceSection(metrics: [AnalysisViewModel.PerformanceDisplay]) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label("Performance", systemImage: "gauge.with.dots.needle.67percent")
-                .font(.headline)
-                .foregroundStyle(.white)
+            Spacer()
 
-            ForEach(metrics) { metric in
-                HStack {
-                    Image(systemName: metric.icon)
-                        .foregroundStyle(metric.color)
-                        .frame(width: 24)
-
-                    Text(metric.name)
-                        .font(.subheadline)
-                        .foregroundStyle(.white)
-
-                    Spacer()
-
-                    Text(metric.formattedValue)
-                        .font(.system(.subheadline, design: .monospaced).bold())
-                        .foregroundStyle(metric.color)
-                }
-                .padding(.vertical, 4)
-
-                if metric.id != metrics.last?.id {
-                    Divider()
-                        .overlay(Color.jumpSubtle.opacity(0.3))
-                }
-            }
+            Text(String(format: "%.0fcm", value * 100))
+                .font(.system(.caption, design: .monospaced).bold())
+                .foregroundStyle(color)
         }
-        .jumpCard()
     }
 
-    // MARK: - Errors
+    // MARK: - Errors Section
 
     private var errorsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Detected Issues", systemImage: "exclamationmark.triangle")
+            Label("Detected Issues (\(result.errors.count))", systemImage: "exclamationmark.triangle")
                 .font(.headline)
                 .foregroundStyle(.white)
 
@@ -249,13 +211,10 @@ struct AnalysisResultsView: View {
                     HStack {
                         Image(systemName: error.severity.icon)
                             .foregroundStyle(error.severity.color)
-
                         Text(error.type.rawValue)
                             .font(.subheadline.bold())
                             .foregroundStyle(.white)
-
                         Spacer()
-
                         Text(error.severity.label)
                             .font(.caption.bold())
                             .foregroundStyle(error.severity.color)
@@ -275,7 +234,7 @@ struct AnalysisResultsView: View {
                     } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "arrow.right.circle")
-                            Text("Go to Frame \(error.frameRange.lowerBound + 1)")
+                            Text("Frame \(error.frameRange.lowerBound + 1)")
                         }
                         .font(.caption.bold())
                         .foregroundStyle(.jumpAccent)
@@ -289,31 +248,7 @@ struct AnalysisResultsView: View {
         .jumpCard()
     }
 
-    // MARK: - Jump Result Banner
-
-    private func jumpResultBanner(success: Bool) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: success ? "checkmark.circle.fill" : "xmark.circle.fill")
-                .font(.title)
-                .foregroundStyle(success ? .green : .red)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(success ? "CLEARED" : "KNOCKED")
-                    .font(.headline.bold())
-                    .foregroundStyle(success ? .green : .red)
-                Text(success ? "Bar stayed up — successful jump!" : "Bar was knocked — review technique below")
-                    .font(.caption)
-                    .foregroundStyle(.jumpSubtle)
-            }
-
-            Spacer()
-        }
-        .padding()
-        .background((success ? Color.green : Color.red).opacity(0.12))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-    }
-
-    // MARK: - Recommendations
+    // MARK: - Recommendations Section
 
     private var recommendationsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -326,9 +261,9 @@ struct AnalysisResultsView: View {
                     ZStack {
                         Circle()
                             .fill(Color.jumpSecondary.opacity(0.2))
-                            .frame(width: 36, height: 36)
+                            .frame(width: 32, height: 32)
                         Text("\(rec.priority)")
-                            .font(.system(.headline, design: .rounded).bold())
+                            .font(.system(.subheadline, design: .rounded).bold())
                             .foregroundStyle(.jumpSecondary)
                     }
 
@@ -336,18 +271,99 @@ struct AnalysisResultsView: View {
                         Text(rec.title)
                             .font(.subheadline.bold())
                             .foregroundStyle(.white)
-
                         Text(rec.detail)
                             .font(.caption)
                             .foregroundStyle(.jumpSubtle)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
+                .padding(.vertical, 4)
+            }
+        }
+        .jumpCard()
+    }
+
+    // MARK: - Coaching Section
+
+    private var coachingSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Coaching Insights", systemImage: "questionmark.circle")
+                .font(.headline)
+                .foregroundStyle(.phaseFlight)
+
+            ForEach(result.coachingInsights) { insight in
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(insight.question)
+                        .font(.subheadline.bold())
+                        .foregroundStyle(.white)
+                    Text(insight.answer)
+                        .font(.caption)
+                        .foregroundStyle(.jumpSubtle)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if let frameIndex = insight.relatedFrameIndex {
+                        Button {
+                            onJumpToFrame(frameIndex)
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "play.circle")
+                                Text("See Frame")
+                            }
+                            .font(.caption.bold())
+                            .foregroundStyle(.jumpAccent)
+                        }
+                    }
+                }
                 .padding()
-                .background(Color.jumpCard)
+                .background(Color.phaseFlight.opacity(0.08))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
             }
         }
         .jumpCard()
+    }
+
+    // MARK: - Measurement Display Helpers
+
+    private struct MeasurementDisplayItem {
+        let name: String
+        let formattedValue: String
+        let idealRange: String
+        let statusIcon: String
+        let statusColor: Color
+    }
+
+    private func buildMeasurementDisplays() -> [MeasurementDisplayItem] {
+        var items: [MeasurementDisplayItem] = []
+        let m = result.measurements
+
+        func add(_ name: String, value: Double?, unit: String, ideal: ClosedRange<Double>) {
+            guard let val = value else { return }
+            let status = JumpMeasurements.status(val, idealRange: ideal)
+            let formatted: String
+            if unit == "s" {
+                formatted = String(format: "%.3f%@", val, unit)
+            } else {
+                formatted = "\(Int(val))\(unit)"
+            }
+            let idealText: String
+            if unit == "s" {
+                idealText = String(format: "%.2f - %.2f%@", ideal.lowerBound, ideal.upperBound, unit)
+            } else {
+                idealText = "\(Int(ideal.lowerBound)) - \(Int(ideal.upperBound))\(unit)"
+            }
+            items.append(MeasurementDisplayItem(
+                name: name, formattedValue: formatted, idealRange: idealText,
+                statusIcon: status.icon, statusColor: status.color
+            ))
+        }
+
+        add("Takeoff Knee at Plant", value: m.takeoffLegKneeAtPlant, unit: "\u{00B0}", ideal: 160...175)
+        add("Takeoff Knee at Toe-Off", value: m.takeoffLegKneeAtToeOff, unit: "\u{00B0}", ideal: 170...180)
+        add("Drive Knee Angle", value: m.driveKneeAngleAtTakeoff, unit: "\u{00B0}", ideal: 70...90)
+        add("Backward Lean at Plant", value: m.backwardLeanAtPlant, unit: "\u{00B0}", ideal: 10...25)
+        add("Takeoff Angle", value: m.takeoffAngle, unit: "\u{00B0}", ideal: 40...55)
+        add("Ground Contact Time", value: m.groundContactTime, unit: "s", ideal: 0.14...0.18)
+
+        return items
     }
 }

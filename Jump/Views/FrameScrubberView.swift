@@ -1,7 +1,10 @@
 import SwiftUI
 
+/// Drag-to-scrub timeline for navigating video frames.
 struct FrameScrubberView: View {
-    @Bindable var viewModel: VideoPlayerViewModel
+    @Binding var currentFrame: Int
+    let totalFrames: Int
+    let onSeek: (Int) -> Void
 
     @State private var isDragging = false
     @State private var dragDebounceTask: Task<Void, Never>?
@@ -9,32 +12,17 @@ struct FrameScrubberView: View {
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
-                // Thumbnail strip background
+                // Track background
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.black.opacity(0.3))
+                    .fill(Color.jumpCard)
 
-                // Thumbnail images
-                if !viewModel.thumbnails.isEmpty {
-                    HStack(spacing: 0) {
-                        ForEach(Array(viewModel.thumbnails.enumerated()), id: \.offset) { _, thumb in
-                            Image(uiImage: thumb)
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(
-                                    width: geo.size.width / CGFloat(viewModel.thumbnails.count),
-                                    height: geo.size.height - 4
-                                )
-                                .clipped()
-                        }
-                    }
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                    .padding(2)
-                }
+                // Progress fill
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.jumpAccent.opacity(0.15))
+                    .frame(width: progressWidth(in: geo.size.width))
 
                 // Playhead indicator
                 playhead(in: geo.size)
-
-                // Phase markers could go here in future
             }
             .contentShape(Rectangle())
             .gesture(
@@ -42,28 +30,23 @@ struct FrameScrubberView: View {
                     .onChanged { value in
                         isDragging = true
                         let progress = max(0, min(1, value.location.x / geo.size.width))
-                        let targetFrame = Int(progress * Double(viewModel.totalFrames - 1))
-
-                        // Update frame index immediately for responsiveness
-                        viewModel.currentFrameIndex = targetFrame
+                        let targetFrame = Int(progress * Double(max(totalFrames - 1, 1)))
+                        currentFrame = targetFrame
 
                         // Debounce the actual frame extraction
                         dragDebounceTask?.cancel()
                         dragDebounceTask = Task {
                             try? await Task.sleep(for: .milliseconds(30))
                             guard !Task.isCancelled else { return }
-                            await viewModel.seekToFrame(targetFrame)
+                            onSeek(targetFrame)
                         }
                     }
                     .onEnded { value in
                         isDragging = false
                         let progress = max(0, min(1, value.location.x / geo.size.width))
-                        let targetFrame = Int(progress * Double(viewModel.totalFrames - 1))
-
+                        let targetFrame = Int(progress * Double(max(totalFrames - 1, 1)))
                         dragDebounceTask?.cancel()
-                        Task {
-                            await viewModel.seekToFrame(targetFrame)
-                        }
+                        onSeek(targetFrame)
                     }
             )
         }
@@ -77,30 +60,27 @@ struct FrameScrubberView: View {
         let offset = playheadOffset(in: size.width)
 
         ZStack {
-            // Playhead line
             RoundedRectangle(cornerRadius: 1)
                 .fill(Color.jumpAccent)
                 .frame(width: 3, height: size.height + 12)
                 .shadow(color: .jumpAccent.opacity(0.5), radius: 4)
 
-            // Top handle
             Circle()
                 .fill(Color.jumpAccent)
                 .frame(width: 12, height: 12)
                 .offset(y: -(size.height / 2 + 2))
         }
         .offset(x: offset)
-        .animation(isDragging ? nil : .easeOut(duration: 0.1), value: viewModel.currentFrameIndex)
+        .animation(isDragging ? nil : .easeOut(duration: 0.1), value: currentFrame)
     }
 
     private func playheadOffset(in width: CGFloat) -> CGFloat {
-        guard viewModel.totalFrames > 1 else { return 0 }
-        return width * CGFloat(viewModel.currentFrameIndex) / CGFloat(viewModel.totalFrames - 1)
+        guard totalFrames > 1 else { return 0 }
+        return width * CGFloat(currentFrame) / CGFloat(totalFrames - 1)
     }
-}
 
-#Preview {
-    FrameScrubberView(viewModel: VideoPlayerViewModel())
-        .padding()
-        .background(Color.jumpBackgroundTop)
+    private func progressWidth(in totalWidth: CGFloat) -> CGFloat {
+        guard totalFrames > 1 else { return 0 }
+        return totalWidth * CGFloat(currentFrame) / CGFloat(totalFrames - 1)
+    }
 }

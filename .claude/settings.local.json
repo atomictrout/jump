@@ -31,7 +31,16 @@
       "WebFetch(domain:exrx.net)",
       "WebFetch(domain:wiki.has-motion.com)",
       "WebFetch(domain:github.com)",
-      "WebFetch(domain:oregonstate.edu)"
+      "WebFetch(domain:oregonstate.edu)",
+      "Bash(pod install:*)",
+      "Bash(ls:*)",
+      "Bash(curl:*)",
+      "Bash(ffprobe:*)",
+      "Bash(ffmpeg:*)",
+      "Bash(python3:*)",
+      "Bash(for:*)",
+      "Bash(do)",
+      "Bash(done)"
     ]
   }
 }

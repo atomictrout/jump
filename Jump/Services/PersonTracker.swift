@@ -1,825 +1,588 @@
-import Vision
 import CoreGraphics
+import Foundation
 
-/// Tracks a single athlete across video frames by matching bounding boxes.
-/// Uses velocity prediction + individual joint matching + bbox scoring for robust matching.
-/// Thread-safe via NSLock for use from background processing threads.
-final class PersonTracker: @unchecked Sendable {
-
-    private let lock = NSLock()
-
-    /// The bounding box of the currently tracked person (normalized Vision coords)
-    private var _trackedBBox: CGRect?
-    /// The centroid of the tracked person
-    private var _trackedCentroid: CGPoint?
-    /// Previous centroid (for velocity estimation)
-    private var _previousCentroid: CGPoint?
-    /// Estimated velocity (centroid displacement per frame)
-    private var _velocity: CGPoint = .zero
-    /// Manual override point (user tapped to select a person)
-    private var _manualOverridePoint: CGPoint?
-    /// Whether a manual override has been set
-    private var _hasManualOverride = false
-    /// Key joint positions from the last tracked observation (for joint-level matching)
-    private var _trackedJoints: [VNHumanBodyPoseObservation.JointName: CGPoint] = [:]
+/// Person tracking service that propagates athlete identity across frames.
+///
+/// Algorithm: bidirectional propagation from anchor frame using:
+/// 1. **Skeleton shape similarity** — position-invariant comparison of relative joint offsets
+/// 2. **Proximity score** — smooth exponential distance decay (not binary IoU)
+/// 3. **Velocity prediction** — predicts where the athlete should be next frame
+/// 4. **Anchor comparison** — every candidate is checked against the original user-selected pose
+///    to prevent drift to spectators
+///
+/// User corrections act as hard anchors that constrain propagation.
+struct PersonTracker {
 
     // MARK: - Configuration
 
-    /// Maximum centroid distance (normalized) to consider a match between frames
-    private let matchThreshold: CGFloat = 0.25
+    struct Config {
+        var highConfidenceThreshold: Float = 0.70
+        var uncertainConfidenceThreshold: Float = 0.40
+        var proximityWeight: Float = 0.25    // smooth distance-based (replaces IoU)
+        var shapeWeight: Float = 0.45        // position-invariant skeleton shape (primary signal)
+        var velocityWeight: Float = 0.30     // velocity prediction (best for consecutive frames)
+        var minMatchableJoints: Int = 3
+        var minMatchScore: Float = 0.35      // raised from 0.2 — reject ambiguous matches
+        var scoreGapForUncertain: Float = 0.15 // if best vs second-best within this, mark uncertain
+        var anchorWeight: Float = 0.30       // blend: (1-anchorWeight)*previousMatch + anchorWeight*anchorMatch
+        var minAnchorSimilarity: Float = 0.25 // below this → force uncertain
 
-    /// Weight for centrality score in initial selection (0-1)
-    private let centralityWeight: CGFloat = 0.4
-    /// Weight for size score in initial selection (0-1)
-    private let sizeWeight: CGFloat = 0.6
+        // Velocity-gating: when athlete is moving fast, trust velocity more than shape.
+        // This prevents locking onto stationary spectators during approach→flight transition.
+        var highVelocityThreshold: CGFloat = 0.02   // per-frame velocity above which adaptive weighting kicks in
+        var highVelocityBoost: Float = 0.25          // additional velocity weight when moving fast (taken from shape)
+        var velocityConsistencyDecay: Float = 8.0    // exp decay for velocity consistency check
+    }
 
-    // Match scoring weights — distance is HEAVILY weighted to avoid switching to nearby bystanders
-    /// Weight for distance from predicted position
-    private let distanceWeight: CGFloat = 0.65
-    /// Weight for individual joint position continuity
-    private let jointContinuityWeight: CGFloat = 0.20
-    /// Weight for bbox size similarity
-    private let sizeSimilarityWeight: CGFloat = 0.05
-    /// Weight for motion consistency (penalizes stationary candidates when tracker has velocity)
-    private let motionConsistencyWeight: CGFloat = 0.10
+    let config: Config
 
-    /// Key joints to track for continuity (stable, high-confidence joints)
-    private let trackingJoints: [VNHumanBodyPoseObservation.JointName] = [
-        .root, .neck, .leftHip, .rightHip, .leftShoulder, .rightShoulder
-    ]
+    init(config: Config = Config()) {
+        self.config = config
+    }
 
-    // MARK: - Public Interface
+    // MARK: - Primary API
 
-    /// Reset tracking state for a new video
-    func reset() {
-        lock.withLock {
-            _trackedBBox = nil
-            _trackedCentroid = nil
-            _previousCentroid = nil
-            _velocity = .zero
-            _manualOverridePoint = nil
-            _hasManualOverride = false
-            _isLocked = false
-            _framesSinceEstablished = 0
-            _consecutiveMisses = 0
-            _trackedJoints = [:]
+    /// Propagate athlete identity from an anchor frame to all other frames.
+    ///
+    /// - Parameters:
+    ///   - anchorFrame: Frame index of the user-selected athlete.
+    ///   - anchorPoseIndex: Pose index within that frame.
+    ///   - allFramePoses: All detected poses per frame.
+    ///   - humanRects: Optional Vision human bounding boxes per frame (top-left origin).
+    ///     When provided, gap frames with a nearby human rect are marked `.unreviewedGap`
+    ///     instead of `.noAthleteAuto`, signaling they're candidates for crop-and-redetect recovery.
+    func propagate(
+        from anchorFrame: Int,
+        anchorPoseIndex: Int,
+        allFramePoses: [[BodyPose]],
+        humanRects: [[CGRect]]? = nil
+    ) -> [Int: FrameAssignment] {
+        var assignments: [Int: FrameAssignment] = [:]
+        let totalFrames = allFramePoses.count
+
+        guard anchorFrame < totalFrames,
+              anchorPoseIndex < allFramePoses[anchorFrame].count else {
+            return assignments
         }
-    }
 
-    /// Set a manual override point — the person nearest this point will be selected.
-    /// Point should be in Vision normalized coordinates (0-1, bottom-left origin).
-    func setManualOverride(point: CGPoint) {
-        lock.withLock {
-            _manualOverridePoint = point
-            _hasManualOverride = true
-            // Reset tracking so next frame re-selects
-            _trackedBBox = nil
-            _trackedCentroid = nil
-            _previousCentroid = nil
-            _velocity = .zero
-            _trackedJoints = [:]
-        }
-    }
+        // Mark the anchor frame as user-confirmed
+        assignments[anchorFrame] = .athleteConfirmed(poseIndex: anchorPoseIndex)
 
-    /// Whether a person has been initially selected (after first few frames)
-    private var _isLocked = false
+        let anchorPose = allFramePoses[anchorFrame][anchorPoseIndex]
 
-    /// Number of frames since tracking was established
-    private var _framesSinceEstablished = 0
+        // Propagate forward from anchor
+        propagateDirection(
+            from: anchorFrame,
+            direction: 1,
+            startingPose: anchorPose,
+            anchorPose: anchorPose,
+            allFramePoses: allFramePoses,
+            assignments: &assignments,
+            humanRects: humanRects
+        )
 
-    /// Frames needed before we "lock on" and reject non-matching people
-    private let lockAfterFrames = 5
+        // Propagate backward from anchor
+        propagateDirection(
+            from: anchorFrame,
+            direction: -1,
+            startingPose: anchorPose,
+            anchorPose: anchorPose,
+            allFramePoses: allFramePoses,
+            assignments: &assignments,
+            humanRects: humanRects
+        )
 
-    /// Number of consecutive frames where no match was found
-    private var _consecutiveMisses = 0
-
-    /// After this many consecutive misses, assume the person has left and re-lock next appearance
-    private let reacquireAfterMisses = 30
-
-    /// Result from selectBest that includes confidence information
-    struct TrackingResult {
-        let observation: VNHumanBodyPoseObservation
-        /// 0.0 = very uncertain (multiple nearby people, large jump), 1.0 = very confident
-        let confidence: CGFloat
-    }
-
-    /// Select the best observation, returning both the observation and a confidence score.
-    func selectBestWithConfidence(
-        from observations: [VNHumanBodyPoseObservation],
-        frameIndex: Int
-    ) -> TrackingResult? {
-        guard let obs = selectBest(from: observations, frameIndex: frameIndex) else { return nil }
-        let conf = lock.withLock { _lastMatchConfidence }
-        return TrackingResult(observation: obs, confidence: conf)
-    }
-
-    /// Confidence of the last match (set inside selectBest)
-    private var _lastMatchConfidence: CGFloat = 1.0
-
-    /// Select the best observation from a set of detected people for the given frame.
-    /// Returns nil if no observations match the tracked athlete (avoids annotating bystanders).
-    func selectBest(
-        from observations: [VNHumanBodyPoseObservation],
-        frameIndex: Int
-    ) -> VNHumanBodyPoseObservation? {
-        guard !observations.isEmpty else {
-            lock.withLock {
-                _consecutiveMisses += 1
-                if _consecutiveMisses >= reacquireAfterMisses {
-                    _isLocked = false
-                    _framesSinceEstablished = 0
-                }
+        // Fill remaining frames as no-athlete
+        for frameIndex in 0..<totalFrames {
+            if assignments[frameIndex] == nil {
+                assignments[frameIndex] = .noAthleteAuto
             }
-            return nil
         }
 
-        return lock.withLock {
-            // If manual override is set, find the person nearest the override point
-            if _hasManualOverride, let overridePoint = _manualOverridePoint {
-                let selected = selectNearest(to: overridePoint, from: observations)
-                if let selected {
-                    updateTrackingUnlocked(for: selected)
-                    _isLocked = true
-                    _framesSinceEstablished = lockAfterFrames
-                    _consecutiveMisses = 0
-                    _lastMatchConfidence = 1.0  // Manual selection = full confidence
-                    _hasManualOverride = false
-                    _manualOverridePoint = nil
-                }
-                return selected
+        // Log summary
+        var tracked = 0, uncertain = 0, noAthlete = 0
+        for (_, assignment) in assignments {
+            switch assignment {
+            case .athleteConfirmed, .athleteAuto: tracked += 1
+            case .athleteUncertain: uncertain += 1
+            default: noAthlete += 1
+            }
+        }
+        print("[PersonTracker] Propagated: \(tracked) tracked, \(uncertain) uncertain, \(noAthlete) noAthlete out of \(totalFrames) frames")
+
+        return assignments
+    }
+
+    /// Re-propagate from a user correction outward, stopping at other confirmed frames.
+    func rePropagate(
+        correction: FrameAssignment,
+        at frameIndex: Int,
+        allFramePoses: [[BodyPose]],
+        existingAssignments: [Int: FrameAssignment]
+    ) -> [Int: FrameAssignment] {
+        var assignments = existingAssignments
+        assignments[frameIndex] = correction
+
+        if let poseIndex = correction.athletePoseIndex,
+           frameIndex < allFramePoses.count,
+           poseIndex < allFramePoses[frameIndex].count {
+
+            let startPose = allFramePoses[frameIndex][poseIndex]
+
+            // For re-propagation, use the correction pose as anchor too
+            propagateDirection(
+                from: frameIndex,
+                direction: 1,
+                startingPose: startPose,
+                anchorPose: startPose,
+                allFramePoses: allFramePoses,
+                assignments: &assignments,
+                stopAtConfirmed: true
+            )
+
+            propagateDirection(
+                from: frameIndex,
+                direction: -1,
+                startingPose: startPose,
+                anchorPose: startPose,
+                allFramePoses: allFramePoses,
+                assignments: &assignments,
+                stopAtConfirmed: true
+            )
+        }
+
+        return assignments
+    }
+
+    // MARK: - Propagation Engine
+
+    private func propagateDirection(
+        from startFrame: Int,
+        direction: Int,
+        startingPose: BodyPose,
+        anchorPose: BodyPose,
+        allFramePoses: [[BodyPose]],
+        assignments: inout [Int: FrameAssignment],
+        stopAtConfirmed: Bool = false,
+        humanRects: [[CGRect]]? = nil
+    ) {
+        let totalFrames = allFramePoses.count
+        var previousPose = startingPose
+        var previousVelocity: CGPoint? = nil
+        var smoothedSpeed: CGFloat = 0  // Exponential moving average of |velocity|
+        var consecutiveLostFrames = 0
+        let maxLostFrames = 30
+
+        var frameIndex = startFrame + direction
+        while frameIndex >= 0 && frameIndex < totalFrames {
+            if stopAtConfirmed, let existing = assignments[frameIndex], existing.isUserConfirmed {
+                break
             }
 
-            // If we have a tracked person, match using multi-signal scoring
-            if let trackedCentroid = _trackedCentroid, let trackedBBox = _trackedBBox {
-                let matched = matchByScoringUnlocked(
-                    trackedCentroid: trackedCentroid,
-                    trackedBBox: trackedBBox,
-                    from: observations,
-                    frameIndex: frameIndex
+            let framePoses = allFramePoses[frameIndex]
+
+            if framePoses.isEmpty {
+                consecutiveLostFrames += 1
+                if consecutiveLostFrames > maxLostFrames {
+                    assignments[frameIndex] = .noAthleteAuto
+                } else {
+                    // Check if Vision detected a human nearby — if so, mark as recoverable gap
+                    let hasNearbyHumanRect = hasNearbyHuman(
+                        at: frameIndex,
+                        predictedFrom: previousPose,
+                        velocity: previousVelocity,
+                        lostFrames: consecutiveLostFrames,
+                        humanRects: humanRects
+                    )
+                    assignments[frameIndex] = hasNearbyHumanRect ? .unreviewedGap : .noAthleteAuto
+                }
+                frameIndex += direction
+                continue
+            }
+
+            // After a gap, use velocity-advanced prediction for better re-matching
+            let matchReference: BodyPose
+            let matchVelocity: CGPoint?
+            if consecutiveLostFrames > 0, let velocity = previousVelocity,
+               let prevCOM = previousPose.centerOfMass {
+                // Predict where the athlete should be after the gap
+                let predictedCOM = CGPoint(
+                    x: prevCOM.x + velocity.x * CGFloat(consecutiveLostFrames),
+                    y: prevCOM.y + velocity.y * CGFloat(consecutiveLostFrames)
                 )
-                if let matched {
-                    updateTrackingUnlocked(for: matched)
-                    _framesSinceEstablished += 1
-                    if _framesSinceEstablished >= lockAfterFrames {
-                        _isLocked = true
+                matchReference = shiftedPose(previousPose, to: predictedCOM)
+                matchVelocity = velocity
+            } else {
+                matchReference = previousPose
+                matchVelocity = previousVelocity
+            }
+
+            let (bestIndex, bestScore, secondBestScore) = findBestMatch(
+                for: matchReference,
+                anchorPose: anchorPose,
+                among: framePoses,
+                previousVelocity: matchVelocity,
+                smoothedSpeed: smoothedSpeed
+            )
+
+            if let bestIndex, let bestScore {
+                let matchedPose = framePoses[bestIndex]
+
+                // Check anchor similarity — prevent drift to spectators
+                let anchorSim = skeletonShapeSimilarity(anchorPose, matchedPose)
+
+                // Score gap check — if best and second-best are close, mark uncertain
+                let isAmbiguous = secondBestScore != nil &&
+                    (bestScore - (secondBestScore ?? 0)) < config.scoreGapForUncertain
+
+                if anchorSim < config.minAnchorSimilarity {
+                    // Shape diverged too much from anchor — likely wrong person
+                    assignments[frameIndex] = .noAthleteAuto
+                    consecutiveLostFrames += 1
+                    frameIndex += direction
+                    continue
+                } else if isAmbiguous || bestScore < config.uncertainConfidenceThreshold {
+                    assignments[frameIndex] = .athleteUncertain(poseIndex: bestIndex, confidence: bestScore)
+                } else if bestScore >= config.highConfidenceThreshold {
+                    assignments[frameIndex] = .athleteAuto(poseIndex: bestIndex, confidence: bestScore)
+                } else {
+                    assignments[frameIndex] = .athleteUncertain(poseIndex: bestIndex, confidence: bestScore)
+                }
+
+                // Update velocity estimate and smoothed speed
+                if let prevRoot = previousPose.centerOfMass,
+                   let currRoot = matchedPose.centerOfMass {
+                    let vel = CGPoint(
+                        x: currRoot.x - prevRoot.x,
+                        y: currRoot.y - prevRoot.y
+                    )
+                    previousVelocity = vel
+                    let speed = hypot(vel.x, vel.y)
+                    // Exponential moving average: 70% old + 30% new
+                    smoothedSpeed = smoothedSpeed * 0.7 + speed * 0.3
+                }
+
+                previousPose = matchedPose
+                consecutiveLostFrames = 0
+            } else {
+                assignments[frameIndex] = .noAthleteAuto
+                consecutiveLostFrames += 1
+            }
+
+            if consecutiveLostFrames > maxLostFrames {
+                frameIndex += direction
+                while frameIndex >= 0 && frameIndex < totalFrames {
+                    if !(stopAtConfirmed && (assignments[frameIndex]?.isUserConfirmed ?? false)) {
+                        assignments[frameIndex] = .noAthleteAuto
                     }
-                    _consecutiveMisses = 0
-                    return matched
+                    frameIndex += direction
                 }
-
-                // No match within threshold
-                _consecutiveMisses += 1
-                _lastMatchConfidence = 0.0
-                if _consecutiveMisses >= reacquireAfterMisses {
-                    _isLocked = false
-                    _framesSinceEstablished = 0
-                }
-
-                if _isLocked {
-                    return nil
-                }
+                break
             }
 
-            // Initial selection: score by centrality + size
-            let selected = initialSelection(from: observations)
-            if let selected {
-                updateTrackingUnlocked(for: selected)
-                _framesSinceEstablished = 1
-                _consecutiveMisses = 0
-                _lastMatchConfidence = observations.count == 1 ? 0.9 : 0.6
-            }
-            return selected
+            frameIndex += direction
         }
     }
 
-    // MARK: - Private
+    /// Create a shifted copy of a pose with all joints offset so the center of mass
+    /// lands at the given predicted position. Used for re-matching after gaps.
+    private func shiftedPose(_ pose: BodyPose, to predictedCOM: CGPoint) -> BodyPose {
+        guard let currentCOM = pose.centerOfMass else { return pose }
+        let dx = predictedCOM.x - currentCOM.x
+        let dy = predictedCOM.y - currentCOM.y
 
-    /// Compute bounding box from an observation's recognized points
-    private func boundingBox(for observation: VNHumanBodyPoseObservation) -> CGRect? {
-        guard let points = try? observation.recognizedPoints(.all) else { return nil }
-
-        var minX: CGFloat = 1.0
-        var maxX: CGFloat = 0.0
-        var minY: CGFloat = 1.0
-        var maxY: CGFloat = 0.0
-        var count = 0
-
-        for (_, point) in points {
-            guard point.confidence > 0.1 else { continue }
-            minX = min(minX, point.location.x)
-            maxX = max(maxX, point.location.x)
-            minY = min(minY, point.location.y)
-            maxY = max(maxY, point.location.y)
-            count += 1
+        var shiftedJoints: [BodyPose.JointName: BodyPose.JointPosition] = [:]
+        for (name, joint) in pose.joints {
+            shiftedJoints[name] = BodyPose.JointPosition(
+                point: CGPoint(x: joint.point.x + dx, y: joint.point.y + dy),
+                confidence: joint.confidence
+            )
         }
 
-        guard count >= 3 else { return nil }
-        return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
-    }
-
-    /// Centroid of a bounding box
-    private func centroid(of rect: CGRect) -> CGPoint {
-        CGPoint(x: rect.midX, y: rect.midY)
-    }
-
-    /// Distance between two points
-    private func distance(_ a: CGPoint, _ b: CGPoint) -> CGFloat {
-        let dx = a.x - b.x
-        let dy = a.y - b.y
-        return sqrt(dx * dx + dy * dy)
-    }
-
-    /// Predicted position of the tracked person based on velocity
-    private var predictedCentroid: CGPoint? {
-        guard let centroid = _trackedCentroid else { return nil }
-        return CGPoint(
-            x: centroid.x + _velocity.x,
-            y: centroid.y + _velocity.y
+        return BodyPose(
+            frameIndex: pose.frameIndex,
+            timestamp: pose.timestamp,
+            joints: shiftedJoints
         )
     }
 
-    /// Extract key joint positions from an observation
-    private func extractKeyJoints(from observation: VNHumanBodyPoseObservation) -> [VNHumanBodyPoseObservation.JointName: CGPoint] {
-        var joints: [VNHumanBodyPoseObservation.JointName: CGPoint] = [:]
-        for jointName in trackingJoints {
-            if let point = try? observation.recognizedPoint(jointName),
-               point.confidence > 0.1 {
-                joints[jointName] = point.location
-            }
-        }
-        return joints
-    }
+    // MARK: - Vision Human Rect Helpers
 
-    /// Compute average displacement of matching joints between tracked and candidate observations.
-    /// Returns 0 if no matching joints found (fallback to centroid-only matching).
-    private func jointDisplacement(
-        candidate: VNHumanBodyPoseObservation,
-        predicted velocity: CGPoint
-    ) -> CGFloat {
-        let candidateJoints = extractKeyJoints(from: candidate)
-        guard !_trackedJoints.isEmpty && !candidateJoints.isEmpty else { return 0 }
+    /// Check if a Vision human rectangle exists near the predicted athlete position.
+    private func hasNearbyHuman(
+        at frameIndex: Int,
+        predictedFrom previousPose: BodyPose,
+        velocity: CGPoint?,
+        lostFrames: Int,
+        humanRects: [[CGRect]]?
+    ) -> Bool {
+        guard let humanRects = humanRects,
+              frameIndex < humanRects.count,
+              !humanRects[frameIndex].isEmpty else { return false }
 
-        var totalDist: CGFloat = 0
-        var matchCount = 0
+        guard let prevCOM = previousPose.centerOfMass else { return false }
 
-        for (jointName, prevPos) in _trackedJoints {
-            guard let candPos = candidateJoints[jointName] else { continue }
-            // Predicted joint position = previous position + velocity
-            let predictedPos = CGPoint(x: prevPos.x + velocity.x, y: prevPos.y + velocity.y)
-            totalDist += distance(predictedPos, candPos)
-            matchCount += 1
-        }
-
-        return matchCount > 0 ? totalDist / CGFloat(matchCount) : 0
-    }
-
-    /// Initial selection: pick the person with highest combined centrality + size score
-    private func initialSelection(from observations: [VNHumanBodyPoseObservation]) -> VNHumanBodyPoseObservation? {
-        var bestScore: CGFloat = -1
-        var bestObs: VNHumanBodyPoseObservation?
-
-        var areas: [(VNHumanBodyPoseObservation, CGRect)] = []
-        var maxArea: CGFloat = 0
-
-        for obs in observations {
-            guard let bbox = boundingBox(for: obs) else { continue }
-            let area = bbox.width * bbox.height
-            areas.append((obs, bbox))
-            maxArea = max(maxArea, area)
-        }
-
-        guard maxArea > 0 else { return observations.first }
-
-        let imageCenter = CGPoint(x: 0.5, y: 0.5)
-
-        for (obs, bbox) in areas {
-            let center = centroid(of: bbox)
-            let area = bbox.width * bbox.height
-
-            let dist = distance(center, imageCenter)
-            let centralityScore = max(0, 1.0 - dist / 0.707)
-            let sizeScore = area / maxArea
-
-            let totalScore = centralityWeight * centralityScore + sizeWeight * sizeScore
-
-            if totalScore > bestScore {
-                bestScore = totalScore
-                bestObs = obs
-            }
-        }
-
-        return bestObs
-    }
-
-    /// Multi-signal matching using centroid distance, joint continuity, and bbox size.
-    /// Distance is weighted very heavily (70%) because during crossovers, shape changes
-    /// dramatically for the athlete while the bystander stays similar.
-    private func matchByScoringUnlocked(
-        trackedCentroid: CGPoint,
-        trackedBBox: CGRect,
-        from observations: [VNHumanBodyPoseObservation],
-        frameIndex: Int
-    ) -> VNHumanBodyPoseObservation? {
-        let targetPoint = predictedCentroid ?? trackedCentroid
-        let trackedArea = trackedBBox.width * trackedBBox.height
-
-        struct Candidate {
-            let observation: VNHumanBodyPoseObservation
-            let score: CGFloat
-            let dist: CGFloat
-            let jointDist: CGFloat
-        }
-
-        var candidates: [Candidate] = []
-
-        // Expected speed of the tracked person (how fast they were moving)
-        let trackerSpeed = sqrt(_velocity.x * _velocity.x + _velocity.y * _velocity.y)
-
-        for obs in observations {
-            guard let bbox = boundingBox(for: obs) else { continue }
-            let center = centroid(of: bbox)
-            let dist = distance(center, targetPoint)
-
-            // Skip if way too far from predicted position
-            if dist > matchThreshold * 1.5 { continue }
-
-            let area = bbox.width * bbox.height
-
-            // 1. Distance score: normalized by threshold (0 = perfect, 1 = at threshold)
-            let distScore = dist / matchThreshold
-
-            // 2. Joint continuity: how well do individual joints match predicted positions?
-            let jDist = jointDisplacement(candidate: obs, predicted: _velocity)
-            let jointScore = jDist / matchThreshold
-
-            // 3. Size similarity
-            let sizeRatio: CGFloat
-            if trackedArea > 0 && area > 0 {
-                let ratio = min(area, trackedArea) / max(area, trackedArea)
-                sizeRatio = 1.0 - ratio
-            } else {
-                sizeRatio = 0.5
-            }
-
-            // 4. Motion consistency: if tracker is moving, penalize candidates that appear
-            //    stationary relative to the tracker's PREVIOUS position.
-            //    A bystander near the predicted position will be close to targetPoint but also
-            //    close to trackedCentroid (because they didn't move). The real athlete should
-            //    have moved AWAY from the previous centroid by roughly the velocity amount.
-            let motionScore: CGFloat
-            if trackerSpeed > 0.01 {
-                // How far is this candidate from the tracker's PREVIOUS centroid?
-                let distFromPrev = distance(center, trackedCentroid)
-                // Expected: candidate should be ~trackerSpeed away from previous centroid
-                // If candidate is very close to previous centroid, they didn't move (bystander)
-                let expectedDist = trackerSpeed
-                if distFromPrev < expectedDist * 0.3 {
-                    // Candidate barely moved from where tracker was — likely stationary bystander
-                    motionScore = 1.0
-                } else {
-                    motionScore = 0.0
-                }
-            } else {
-                motionScore = 0.0  // No velocity established yet, don't penalize
-            }
-
-            // Combined score (lower is better)
-            let totalScore = distanceWeight * distScore
-                + jointContinuityWeight * jointScore
-                + sizeSimilarityWeight * sizeRatio
-                + motionConsistencyWeight * motionScore
-
-            candidates.append(Candidate(
-                observation: obs,
-                score: totalScore,
-                dist: dist,
-                jointDist: jDist
-            ))
-        }
-
-        // Sort by score
-        candidates.sort { $0.score < $1.score }
-
-        guard let best = candidates.first, best.dist <= matchThreshold else {
-            _lastMatchConfidence = 0.0
-            return nil
-        }
-
-        // Compute confidence
-        let distConfidence = max(0, 1.0 - best.dist / matchThreshold)
-
-        // Ambiguity: how close is second-best to best?
-        let ambiguityConfidence: CGFloat
-        if candidates.count <= 1 {
-            ambiguityConfidence = 1.0
+        let predictedCenter: CGPoint
+        if let vel = velocity {
+            predictedCenter = CGPoint(
+                x: prevCOM.x + vel.x * CGFloat(lostFrames),
+                y: prevCOM.y + vel.y * CGFloat(lostFrames)
+            )
         } else {
-            let margin = candidates[1].score - best.score
-            // If both are very close in score, confidence is LOW
-            ambiguityConfidence = min(1.0, margin / 0.15)
+            predictedCenter = prevCOM
         }
 
-        // Displacement confidence: if we moved much more than expected, something is off
-        let expectedDisplacement = sqrt(_velocity.x * _velocity.x + _velocity.y * _velocity.y)
-        let actualDisplacement = best.dist
-        let displacementRatio = expectedDisplacement > 0.001
-            ? actualDisplacement / max(expectedDisplacement, 0.01)
-            : (actualDisplacement > 0.05 ? 0.3 : 1.0)  // No velocity yet: penalize large jumps
-        let displacementConfidence = max(0, min(1.0, 2.0 - displacementRatio))
+        // Dynamic threshold: widens as more frames are lost
+        let baseThreshold: CGFloat = 0.20
+        let perFrameExpansion: CGFloat = 0.02
+        let threshold = min(baseThreshold + perFrameExpansion * CGFloat(lostFrames), 0.45)
 
-        _lastMatchConfidence = 0.30 * distConfidence
-            + 0.40 * ambiguityConfidence
-            + 0.30 * displacementConfidence
-
-        #if DEBUG
-        if candidates.count > 1 {
-            let secondDist = candidates[1].dist
-            print("[Tracker] frame=\(frameIndex) candidates=\(candidates.count) " +
-                  "bestDist=\(String(format: "%.3f", best.dist)) " +
-                  "2ndDist=\(String(format: "%.3f", secondDist)) " +
-                  "bestScore=\(String(format: "%.3f", best.score)) " +
-                  "2ndScore=\(String(format: "%.3f", candidates[1].score)) " +
-                  "conf=\(String(format: "%.2f", _lastMatchConfidence)) " +
-                  "vel=(\(String(format: "%.3f", _velocity.x)),\(String(format: "%.3f", _velocity.y)))")
-        }
-        #endif
-
-        return best.observation
-    }
-
-    /// Find the observation nearest to a specific point (for manual override).
-    private func selectNearest(
-        to point: CGPoint,
-        from observations: [VNHumanBodyPoseObservation]
-    ) -> VNHumanBodyPoseObservation? {
-        var bestScore: CGFloat = .greatestFiniteMagnitude
-        var bestObs: VNHumanBodyPoseObservation?
-
-        for obs in observations {
-            guard let bbox = boundingBox(for: obs) else { continue }
-
-            let expandedBBox = bbox.insetBy(dx: -0.03, dy: -0.03)
-            let containsTap = expandedBBox.contains(point)
-
-            let jointDist = nearestJointDistance(to: point, observation: obs)
-            let center = centroid(of: bbox)
-            let centroidDist = distance(center, point)
-
-            let score: CGFloat
-            if containsTap {
-                score = jointDist * 0.5
-            } else {
-                score = centroidDist + 0.5
-            }
-
-            if score < bestScore {
-                bestScore = score
-                bestObs = obs
+        for rect in humanRects[frameIndex] {
+            let rectCenter = CGPoint(x: rect.midX, y: rect.midY)
+            let distance = hypot(rectCenter.x - predictedCenter.x, rectCenter.y - predictedCenter.y)
+            if distance < threshold {
+                return true
             }
         }
 
-        return bestObs
+        return false
     }
 
-    /// Find the distance from a point to the nearest visible joint in an observation
-    private func nearestJointDistance(
-        to point: CGPoint,
-        observation: VNHumanBodyPoseObservation
-    ) -> CGFloat {
-        guard let points = try? observation.recognizedPoints(.all) else { return .greatestFiniteMagnitude }
+    // MARK: - Matching
 
-        var minDist: CGFloat = .greatestFiniteMagnitude
-        for (_, jointPoint) in points {
-            guard jointPoint.confidence > 0.1 else { continue }
-            let dist = distance(jointPoint.location, point)
-            minDist = min(minDist, dist)
-        }
-        return minDist
-    }
+    /// Find the best matching pose among candidates.
+    ///
+    /// Returns (bestIndex, bestScore, secondBestScore) — secondBestScore is used for
+    /// the score gap check to detect ambiguous frames.
+    ///
+    /// When the athlete is moving fast (`smoothedSpeed` > threshold), velocity matching
+    /// is boosted and shape matching is reduced. This prevents locking onto stationary
+    /// spectators during approach→flight transition.
+    private func findBestMatch(
+        for reference: BodyPose,
+        anchorPose: BodyPose,
+        among candidates: [BodyPose],
+        previousVelocity: CGPoint?,
+        smoothedSpeed: CGFloat = 0
+    ) -> (Int?, Float?, Float?) {
+        guard !candidates.isEmpty else { return (nil, nil, nil) }
 
-    /// Update tracking state with velocity estimation (caller must hold lock)
-    private func updateTrackingUnlocked(for observation: VNHumanBodyPoseObservation) {
-        if let bbox = boundingBox(for: observation) {
-            let newCentroid = centroid(of: bbox)
+        // Adaptive weighting: when the athlete is moving fast, trust velocity more than shape.
+        // A running athlete should never be matched to a stationary spectator.
+        let isHighVelocity = smoothedSpeed > config.highVelocityThreshold && previousVelocity != nil
+        let velocityBoost: Float = isHighVelocity ? config.highVelocityBoost : 0
 
-            // Update velocity estimate
-            if let prevCentroid = _trackedCentroid {
-                let newVelocity = CGPoint(
-                    x: newCentroid.x - prevCentroid.x,
-                    y: newCentroid.y - prevCentroid.y
-                )
-                // Exponential smoothing to reduce noise
-                let alpha: CGFloat = 0.5
-                _velocity = CGPoint(
-                    x: alpha * newVelocity.x + (1 - alpha) * _velocity.x,
-                    y: alpha * newVelocity.y + (1 - alpha) * _velocity.y
-                )
+        var bestIndex: Int?
+        var bestScore: Float = 0
+        var secondBestScore: Float = 0
+
+        for (index, candidate) in candidates.enumerated() {
+            let previousMatchScore = matchScore(
+                reference: reference,
+                candidate: candidate,
+                velocity: previousVelocity,
+                velocityBoost: velocityBoost
+            )
+
+            // During high velocity, reduce anchor weight — the athlete's shape is changing
+            // (transitioning from running to jumping), so anchor comparison is less reliable
+            let effectiveAnchorWeight = isHighVelocity
+                ? config.anchorWeight * 0.5  // halve anchor influence when moving fast
+                : config.anchorWeight
+
+            // Blend with anchor comparison to prevent drift
+            let anchorMatchScore = matchScore(
+                reference: anchorPose,
+                candidate: candidate,
+                velocity: nil,  // No velocity relative to anchor
+                velocityBoost: 0
+            )
+
+            let combinedScore = (1.0 - effectiveAnchorWeight) * previousMatchScore + effectiveAnchorWeight * anchorMatchScore
+
+            if combinedScore > bestScore {
+                secondBestScore = bestScore
+                bestScore = combinedScore
+                bestIndex = index
+            } else if combinedScore > secondBestScore {
+                secondBestScore = combinedScore
             }
-
-            _previousCentroid = _trackedCentroid
-            _trackedBBox = bbox
-            _trackedCentroid = newCentroid
-            // Store individual joint positions for continuity matching
-            _trackedJoints = extractKeyJoints(from: observation)
         }
+
+        guard bestScore > config.minMatchScore else { return (nil, nil, nil) }
+        return (bestIndex, bestScore, candidates.count > 1 ? secondBestScore : nil)
     }
 
-    /// Update tracking state (acquires lock)
-    private func updateTracking(for observation: VNHumanBodyPoseObservation) {
-        lock.withLock {
-            updateTrackingUnlocked(for: observation)
-        }
-    }
-}
-// MARK: - BodyPose Support
+    private func matchScore(
+        reference: BodyPose,
+        candidate: BodyPose,
+        velocity: CGPoint?,
+        velocityBoost: Float = 0
+    ) -> Float {
+        var totalScore: Float = 0
 
-extension PersonTracker {
-    /// Result struct for BodyPose tracking
-    struct BodyPoseTrackingResult {
-        let pose: BodyPose
-        /// 0.0 = very uncertain (multiple nearby people, large jump), 1.0 = very confident
-        let confidence: CGFloat
-    }
-    
-    /// Select the best BodyPose, returning both the pose and a confidence score.
-    func selectBestWithConfidence(
-        from poses: [BodyPose],
-        frameIndex: Int
-    ) -> BodyPoseTrackingResult? {
-        guard let selected = selectBest(from: poses, frameIndex: frameIndex) else { return nil }
-        let conf = lock.withLock { _lastMatchConfidence }
-        return BodyPoseTrackingResult(pose: selected, confidence: conf)
-    }
-    
-    /// Select the best BodyPose from a set of detected people for the given frame.
-    /// Returns nil if no poses match the tracked athlete.
-    func selectBest(
-        from poses: [BodyPose],
-        frameIndex: Int
-    ) -> BodyPose? {
-        guard !poses.isEmpty else {
-            lock.withLock {
-                _consecutiveMisses += 1
-                if _consecutiveMisses >= reacquireAfterMisses {
-                    _isLocked = false
-                    _framesSinceEstablished = 0
-                }
-            }
-            return nil
-        }
-        
-        return lock.withLock {
-            // If manual override is set, find the person nearest the override point
-            if _hasManualOverride, let overridePoint = _manualOverridePoint {
-                let selected = selectNearestBodyPose(to: overridePoint, from: poses)
-                if let selected {
-                    updateTrackingUnlocked(for: selected)
-                    _isLocked = true
-                    _framesSinceEstablished = lockAfterFrames
-                    _consecutiveMisses = 0
-                    _lastMatchConfidence = 1.0
-                    _hasManualOverride = false
-                    _manualOverridePoint = nil
-                }
-                return selected
-            }
-            
-            // If we have a tracked person, match using multi-signal scoring
-            if let trackedCentroid = _trackedCentroid, let trackedBBox = _trackedBBox {
-                let matched = matchBodyPoseByScoringUnlocked(
-                    trackedCentroid: trackedCentroid,
-                    trackedBBox: trackedBBox,
-                    from: poses,
-                    frameIndex: frameIndex
-                )
-                if let matched {
-                    updateTrackingUnlocked(for: matched)
-                    _framesSinceEstablished += 1
-                    if _framesSinceEstablished >= lockAfterFrames {
-                        _isLocked = true
+        let proxScore = proximityScore(reference, candidate)
+        totalScore += config.proximityWeight * proxScore
+
+        let shapeScore = skeletonShapeSimilarity(reference, candidate)
+        // When velocity boost is active, reduce shape weight (athlete's shape is changing during jump)
+        totalScore += (config.shapeWeight - velocityBoost) * shapeScore
+
+        if let velocity {
+            let velScore = velocityMatchScore(reference, candidate, velocity: velocity)
+            // When velocity boost is active, increase velocity weight
+            totalScore += (config.velocityWeight + velocityBoost) * velScore
+
+            // Velocity consistency penalty: if the athlete was moving fast but this candidate
+            // implies they suddenly stopped, penalize heavily. A spectator standing still near
+            // the bar scores near 0 on velocity, and this penalty makes the combined score
+            // low enough to reject them.
+            if velocityBoost > 0 {
+                let speed = hypot(velocity.x, velocity.y)
+                if speed > 0.01, let refCOM = reference.centerOfMass, let candCOM = candidate.centerOfMass {
+                    let impliedVelocity = CGPoint(x: candCOM.x - refCOM.x, y: candCOM.y - refCOM.y)
+                    let impliedSpeed = hypot(impliedVelocity.x, impliedVelocity.y)
+                    let speedRatio = impliedSpeed / speed
+                    // If candidate implies < 20% of expected speed, apply penalty
+                    if speedRatio < 0.2 {
+                        let penalty = velocityBoost * 0.5  // knock off up to half the boost as penalty
+                        totalScore -= penalty
                     }
-                    _consecutiveMisses = 0
-                    return matched
-                }
-                
-                // No match within threshold
-                _consecutiveMisses += 1
-                _lastMatchConfidence = 0.0
-                if _consecutiveMisses >= reacquireAfterMisses {
-                    _isLocked = false
-                    _framesSinceEstablished = 0
-                }
-                
-                if _isLocked {
-                    return nil
                 }
             }
-            
-            // Initial selection: score by centrality + size
-            let selected = initialBodyPoseSelection(from: poses)
-            if let selected {
-                updateTrackingUnlocked(for: selected)
-                _framesSinceEstablished = 1
-                _consecutiveMisses = 0
-                _lastMatchConfidence = poses.count == 1 ? 0.9 : 0.6
-            }
-            return selected
-        }
-    }
-    
-    // MARK: - BodyPose Helper Methods
-    
-    private func selectNearestBodyPose(to point: CGPoint, from poses: [BodyPose]) -> BodyPose? {
-        var nearest: BodyPose?
-        var minDist = CGFloat.infinity
-        
-        for pose in poses {
-            guard let centerOfMass = pose.centerOfMass else { continue }
-            let dist = distance(centerOfMass, point)
-            if dist < minDist {
-                minDist = dist
-                nearest = pose
-            }
-        }
-        
-        return nearest
-    }
-    
-    private func matchBodyPoseByScoringUnlocked(
-        trackedCentroid: CGPoint,
-        trackedBBox: CGRect,
-        from poses: [BodyPose],
-        frameIndex: Int
-    ) -> BodyPose? {
-        let predicted = predictedCentroid ?? trackedCentroid
-        var bestScore: CGFloat = -1
-        var bestPose: BodyPose?
-        var bestDistRaw: CGFloat = 0
-        
-        for pose in poses {
-            guard let bbox = pose.boundingBox,
-                  let centerOfMass = pose.centerOfMass else { continue }
-            
-            // Distance from predicted position
-            let dist = distance(centerOfMass, predicted)
-            let distScore: CGFloat = max(0, 1 - (dist / matchThreshold))
-            
-            // Size similarity
-            let sizeRatio = min(bbox.width, trackedBBox.width) / max(bbox.width, trackedBBox.width)
-            let sizeScore = sizeRatio
-            
-            // Joint continuity (how well joints match previous positions)
-            let jointScore = jointContinuityScore(for: pose)
-            
-            // Motion consistency
-            let motionScore = motionConsistencyScore(for: centerOfMass, from: trackedCentroid)
-            
-            // Combined score
-            let score = distanceWeight * distScore +
-                        sizeSimilarityWeight * sizeScore +
-                        jointContinuityWeight * jointScore +
-                        motionConsistencyWeight * motionScore
-            
-            if score > bestScore {
-                bestScore = score
-                bestPose = pose
-                bestDistRaw = dist
-            }
-        }
-        
-        // Confidence based on score and number of candidates
-        let normalized = max(0, min(1, bestScore))
-        let penaltyForMultiple = poses.count > 1 ? 0.85 : 1.0
-        _lastMatchConfidence = normalized * penaltyForMultiple
-        
-        // Threshold: require minimum score
-        guard bestScore > 0.3 else { return nil }
-        
-        // Additional threshold: if distance jumped too far, reject
-        if bestDistRaw > matchThreshold * 1.5 {
-            return nil
-        }
-        
-        return bestPose
-    }
-    
-    private func jointContinuityScore(for pose: BodyPose) -> CGFloat {
-        guard !_trackedJoints.isEmpty else { return 0.5 }
-        
-        var totalDist: CGFloat = 0
-        var count = 0
-        
-        let bodyPoseJointMapping: [VNHumanBodyPoseObservation.JointName: BodyPose.JointName] = [
-            .root: .root,
-            .neck: .neck,
-            .leftHip: .leftHip,
-            .rightHip: .rightHip,
-            .leftShoulder: .leftShoulder,
-            .rightShoulder: .rightShoulder
-        ]
-        
-        for (vnJoint, bodyPoseJoint) in bodyPoseJointMapping {
-            guard let trackedPoint = _trackedJoints[vnJoint],
-                  let currentJoint = pose.joints[bodyPoseJoint] else { continue }
-            
-            let dist = distance(trackedPoint, currentJoint.point)
-            totalDist += dist
-            count += 1
-        }
-        
-        guard count > 0 else { return 0.5 }
-        let avgDist = totalDist / CGFloat(count)
-        return max(0, 1 - (avgDist / 0.15))
-    }
-    
-    private func motionConsistencyScore(for currentCenter: CGPoint, from previousCenter: CGPoint) -> CGFloat {
-        // Check if tracker has established velocity
-        let trackerSpeed = sqrt(_velocity.x * _velocity.x + _velocity.y * _velocity.y)
-        
-        guard trackerSpeed > 0.01 else {
-            return 0.0  // No velocity established yet, don't penalize
-        }
-        
-        // How far is this candidate from the tracker's PREVIOUS centroid?
-        let distFromPrev = distance(currentCenter, previousCenter)
-        
-        // Expected: candidate should be ~trackerSpeed away from previous centroid
-        // If candidate is very close to previous centroid, they didn't move (bystander)
-        let expectedDist = trackerSpeed
-        if distFromPrev < expectedDist * 0.3 {
-            // Candidate barely moved from where tracker was — likely stationary bystander
-            return 1.0
         } else {
-            return 0.0
+            // Redistribute velocity weight to shape (most reliable without velocity)
+            let redistributed = config.velocityWeight
+            totalScore += redistributed * shapeScore
         }
+
+        return max(0, totalScore)
     }
-    
-    private func initialBodyPoseSelection(from poses: [BodyPose]) -> BodyPose? {
-        var bestScore: CGFloat = -1
-        var bestPose: BodyPose?
-        
-        for pose in poses {
-            guard let bbox = pose.boundingBox,
-                  let _ = pose.centerOfMass else { continue }
-            
-            // Centrality: prefer people near the center of frame
-            let bboxCenter = centroid(of: bbox)
-            let frameCenterDist = distance(bboxCenter, CGPoint(x: 0.5, y: 0.5))
-            let centralityScore = max(0, 1 - frameCenterDist)
-            
-            // Size: prefer larger bounding boxes (athlete is likely close to camera)
-            let area = bbox.width * bbox.height
-            let sizeScore = min(1, area / 0.3)
-            
-            let score = centralityWeight * centralityScore + sizeWeight * sizeScore
-            
-            if score > bestScore {
-                bestScore = score
-                bestPose = pose
-            }
-        }
-        
-        return bestPose
+
+    // MARK: - Matching Components
+
+    /// Smooth proximity score based on distance between centers of mass.
+    ///
+    /// Uses exponential decay: exp(-distance * 5.0)
+    /// - 0.0 distance → 1.0
+    /// - 0.1 distance → 0.61
+    /// - 0.2 distance → 0.37
+    /// - 0.5 distance → 0.08
+    private func proximityScore(_ a: BodyPose, _ b: BodyPose) -> Float {
+        guard let comA = a.centerOfMass, let comB = b.centerOfMass else { return 0 }
+        let distance = hypot(comA.x - comB.x, comA.y - comB.y)
+        return Float(exp(-Double(distance) * 5.0))
     }
-    
-    private func updateTrackingUnlocked(for pose: BodyPose) {
-        if let bbox = pose.boundingBox,
-           let centerOfMass = pose.centerOfMass {
-            // Update velocity estimate
-            if let prevCentroid = _trackedCentroid {
-                let newVelocity = CGPoint(
-                    x: centerOfMass.x - prevCentroid.x,
-                    y: centerOfMass.y - prevCentroid.y
-                )
-                // Exponential smoothing
-                let alpha: CGFloat = 0.5
-                _velocity = CGPoint(
-                    x: alpha * newVelocity.x + (1 - alpha) * _velocity.x,
-                    y: alpha * newVelocity.y + (1 - alpha) * _velocity.y
-                )
-            }
-            
-            _previousCentroid = _trackedCentroid
-            _trackedBBox = bbox
-            _trackedCentroid = centerOfMass
-            
-            // Store individual joint positions for continuity matching
-            var joints: [VNHumanBodyPoseObservation.JointName: CGPoint] = [:]
-            let bodyPoseJointMapping: [BodyPose.JointName: VNHumanBodyPoseObservation.JointName] = [
-                .root: .root,
-                .neck: .neck,
-                .leftHip: .leftHip,
-                .rightHip: .rightHip,
-                .leftShoulder: .leftShoulder,
-                .rightShoulder: .rightShoulder
-            ]
-            
-            for (bodyPoseJoint, vnJoint) in bodyPoseJointMapping {
-                if let joint = pose.joints[bodyPoseJoint], joint.confidence > 0.1 {
-                    joints[vnJoint] = joint.point
-                }
-            }
-            _trackedJoints = joints
+
+    /// Position-invariant skeleton shape similarity.
+    ///
+    /// Compares relative joint offsets (from center of mass), normalized by skeleton scale.
+    /// Two people at different positions but similar body configurations score high.
+    /// Two people in different poses (one running, one standing) score low.
+    private func skeletonShapeSimilarity(_ a: BodyPose, _ b: BodyPose) -> Float {
+        let keyJoints: [BodyPose.JointName] = [
+            .leftShoulder, .rightShoulder, .leftHip, .rightHip,
+            .leftKnee, .rightKnee, .leftAnkle, .rightAnkle,
+            .leftElbow, .rightElbow, .leftWrist, .rightWrist
+        ]
+
+        guard let comA = a.centerOfMass, let comB = b.centerOfMass else { return 0 }
+
+        // Scale = bounding box diagonal (for normalization)
+        let scaleA = a.boundingBox.map { hypot($0.width, $0.height) } ?? 0.3
+        let scaleB = b.boundingBox.map { hypot($0.width, $0.height) } ?? 0.3
+
+        var totalSimilarity: CGFloat = 0
+        var matchedJoints = 0
+
+        for joint in keyJoints {
+            guard let jA = a.joints[joint], jA.confidence > 0.2,
+                  let jB = b.joints[joint], jB.confidence > 0.2 else { continue }
+
+            // Relative offset from center of mass, normalized by skeleton scale
+            let relA = CGPoint(
+                x: (jA.point.x - comA.x) / max(scaleA, 0.01),
+                y: (jA.point.y - comA.y) / max(scaleA, 0.01)
+            )
+            let relB = CGPoint(
+                x: (jB.point.x - comB.x) / max(scaleB, 0.01),
+                y: (jB.point.y - comB.y) / max(scaleB, 0.01)
+            )
+
+            let diff = hypot(relA.x - relB.x, relA.y - relB.y)
+            // Softer decay: 1.0 at diff=0, 0.0 at diff=0.5
+            let sim = max(0, 1.0 - diff * 2.0)
+            totalSimilarity += sim
+            matchedJoints += 1
         }
+
+        guard matchedJoints >= config.minMatchableJoints else { return 0 }
+        return Float(totalSimilarity / CGFloat(matchedJoints))
+    }
+
+    /// Velocity-based match score: how close is the candidate to where velocity predicts?
+    private func velocityMatchScore(_ reference: BodyPose, _ candidate: BodyPose, velocity: CGPoint) -> Float {
+        guard let refRoot = reference.centerOfMass,
+              let candRoot = candidate.centerOfMass else { return 0.5 }
+
+        let predicted = CGPoint(
+            x: refRoot.x + velocity.x,
+            y: refRoot.y + velocity.y
+        )
+
+        let distanceToPredicted = hypot(predicted.x - candRoot.x, predicted.y - candRoot.y)
+        // Softer decay than the old *15.0 — score = exp(-distance * 8.0)
+        return Float(exp(-Double(distanceToPredicted) * 8.0))
+    }
+
+    // MARK: - Summary
+
+    static func summary(
+        assignments: [Int: FrameAssignment],
+        totalFrames: Int
+    ) -> TrackingSummary {
+        var tracked = 0
+        var uncertain = 0
+        var noAthlete = 0
+        var gaps = 0
+
+        for frameIndex in 0..<totalFrames {
+            switch assignments[frameIndex] {
+            case .athleteConfirmed, .athleteAuto:
+                tracked += 1
+            case .athleteUncertain:
+                uncertain += 1
+            case .noAthleteConfirmed, .noAthleteAuto:
+                noAthlete += 1
+            case .unreviewedGap, .athleteNoPose:
+                gaps += 1
+            case nil:
+                noAthlete += 1
+            }
+        }
+
+        return TrackingSummary(
+            totalFrames: totalFrames,
+            trackedFrames: tracked,
+            uncertainFrames: uncertain,
+            noAthleteFrames: noAthlete,
+            gapFrames: gaps
+        )
     }
 }
 
+// MARK: - Tracking Summary
+
+struct TrackingSummary: Sendable {
+    let totalFrames: Int
+    let trackedFrames: Int
+    let uncertainFrames: Int
+    let noAthleteFrames: Int
+    let gapFrames: Int
+
+    var framesNeedingReview: Int { uncertainFrames + gapFrames }
+    var trackingPercentage: Double {
+        guard totalFrames > 0 else { return 0 }
+        return Double(trackedFrames) / Double(totalFrames) * 100
+    }
+}

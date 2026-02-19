@@ -4,9 +4,13 @@ import AVFoundation
 
 struct VideoImportView: View {
     @Environment(\.dismiss) private var dismiss
-    @State private var viewModel = VideoImportViewModel()
+    @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var showCamera = false
-    @State private var showPhotoPicker = false
+    @State private var isLoading = false
+    @State private var errorMessage = ""
+    @State private var showError = false
+    @State private var pendingSession: JumpSession?
+    @State private var showTrimView = false
 
     let onSessionCreated: (JumpSession) -> Void
 
@@ -18,7 +22,6 @@ struct VideoImportView: View {
                 VStack(spacing: 32) {
                     Spacer()
 
-                    // Header
                     VStack(spacing: 8) {
                         Text("Select Video")
                             .font(.largeTitle.bold())
@@ -30,9 +33,7 @@ struct VideoImportView: View {
 
                     Spacer()
 
-                    // Import options
                     VStack(spacing: 16) {
-                        // Record video
                         ImportOptionButton(
                             icon: "video.fill",
                             title: "Record Video",
@@ -42,21 +43,43 @@ struct VideoImportView: View {
                             showCamera = true
                         }
 
-                        // Choose from library
-                        ImportOptionButton(
-                            icon: "photo.on.rectangle",
-                            title: "Photo Library",
-                            subtitle: "Select an existing video",
-                            color: .jumpSecondary
+                        PhotosPicker(
+                            selection: $selectedPhotoItem,
+                            matching: .videos,
+                            photoLibrary: .shared()
                         ) {
-                            showPhotoPicker = true
+                            HStack(spacing: 16) {
+                                Image(systemName: "photo.on.rectangle")
+                                    .font(.title2)
+                                    .frame(width: 44, height: 44)
+                                    .background(Color.jumpSecondary.opacity(0.2))
+                                    .foregroundStyle(.jumpSecondary)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Photo Library")
+                                        .font(.headline)
+                                        .foregroundStyle(.white)
+                                    Text("Select an existing video")
+                                        .font(.caption)
+                                        .foregroundStyle(.jumpSubtle)
+                                }
+
+                                Spacer()
+
+                                Image(systemName: "chevron.right")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.jumpSubtle)
+                            }
+                            .padding()
+                            .background(Color.jumpCard)
+                            .clipShape(RoundedRectangle(cornerRadius: 16))
                         }
                     }
                     .padding(.horizontal, 24)
 
                     Spacer()
 
-                    // Tips section
                     VStack(alignment: .leading, spacing: 12) {
                         Label("Recording Tips", systemImage: "lightbulb.fill")
                             .font(.headline)
@@ -79,41 +102,117 @@ struct VideoImportView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                    .foregroundStyle(.jumpAccent)
+                    Button("Cancel") { dismiss() }
+                        .foregroundStyle(.jumpAccent)
                 }
             }
             .fullScreenCover(isPresented: $showCamera) {
                 CameraRecorderView { url in
-                    Task {
-                        await viewModel.handleVideoSelected(url: url)
-                    }
+                    Task { await handleVideoSelected(url: url) }
                 }
             }
-            .photosPicker(
-                isPresented: $showPhotoPicker,
-                selection: $viewModel.selectedPhotoItem,
-                matching: .videos,
-                photoLibrary: .shared()
-            )
+            .onChange(of: selectedPhotoItem) { _, item in
+                if let item {
+                    Task { await loadVideo(from: item) }
+                }
+            }
             .overlay {
-                if viewModel.isLoading {
+                if isLoading {
                     LoadingOverlay(message: "Preparing video...")
                 }
             }
-            .alert("Error", isPresented: $viewModel.showError) {
+            .alert("Error", isPresented: $showError) {
                 Button("OK") {}
             } message: {
-                Text(viewModel.errorMessage)
+                Text(errorMessage)
             }
-            .onChange(of: viewModel.session) { _, session in
-                if let session {
-                    dismiss()
-                    onSessionCreated(session)
+            .sheet(isPresented: $showTrimView) {
+                if let session = pendingSession {
+                    VideoTrimView(session: session) { trimRange in
+                        if let range = trimRange {
+                            session.trimStartSeconds = range.lowerBound
+                            session.trimEndSeconds = range.upperBound
+                            // Update totalFrames to reflect trimmed duration
+                            let trimmedDuration = range.upperBound - range.lowerBound
+                            session.totalFrames = Int(trimmedDuration * session.frameRate)
+                        }
+                        dismiss()
+                        onSessionCreated(session)
+                    }
                 }
             }
+        }
+    }
+
+    // MARK: - Video Handling
+
+    @MainActor
+    private func handleVideoSelected(url: URL) async {
+        isLoading = true
+        defer { isLoading = false }
+
+        do {
+            let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+            let destinationURL = documentsURL.appendingPathComponent("jump_\(UUID().uuidString).mov")
+
+            if FileManager.default.fileExists(atPath: destinationURL.path) {
+                try FileManager.default.removeItem(at: destinationURL)
+            }
+            try FileManager.default.copyItem(at: url, to: destinationURL)
+
+            let session = try await JumpSession.create(from: destinationURL)
+            pendingSession = session
+            showTrimView = true
+        } catch {
+            errorMessage = error.localizedDescription
+            showError = true
+        }
+    }
+
+    @MainActor
+    private func loadVideo(from item: PhotosPickerItem) async {
+        isLoading = true
+        defer { isLoading = false }
+
+        do {
+            guard let videoData = try await item.loadTransferable(type: VideoTransferable.self) else {
+                throw VideoImportError.loadFailed
+            }
+            let session = try await JumpSession.create(from: videoData.url)
+            pendingSession = session
+            showTrimView = true
+        } catch {
+            errorMessage = error.localizedDescription
+            showError = true
+        }
+    }
+}
+
+// MARK: - Video Transferable
+
+struct VideoTransferable: Transferable {
+    let url: URL
+
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(contentType: .movie) { transferable in
+            SentTransferredFile(transferable.url)
+        } importing: { received in
+            let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+            let destinationURL = documentsURL.appendingPathComponent("jump_\(UUID().uuidString).mov")
+            try FileManager.default.copyItem(at: received.file, to: destinationURL)
+            return VideoTransferable(url: destinationURL)
+        }
+    }
+}
+
+enum VideoImportError: LocalizedError {
+    case loadFailed
+    case copyFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .loadFailed: return "Failed to load the selected video."
+        case .copyFailed: return "Failed to save the video file."
         }
     }
 }
@@ -181,8 +280,7 @@ struct LoadingOverlay: View {
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.6)
-                .ignoresSafeArea()
+            Color.black.opacity(0.6).ignoresSafeArea()
             VStack(spacing: 16) {
                 ProgressView()
                     .scaleEffect(1.5)
@@ -196,8 +294,4 @@ struct LoadingOverlay: View {
             .clipShape(RoundedRectangle(cornerRadius: 20))
         }
     }
-}
-
-#Preview {
-    VideoImportView { _ in }
 }

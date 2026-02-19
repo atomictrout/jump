@@ -7,7 +7,12 @@ struct AngleBadgeView: View {
     let offset: CGPoint
     let measurements: JumpMeasurements?
 
+    @AppStorage(AppSettingsKey.showAngleBadges) private var showAngles = true
+
     var body: some View {
+        if !showAngles {
+            EmptyView()
+        } else {
         Canvas { context, size in
             let joints = CoordinateConverter.convertPose(pose, to: viewSize, offset: offset)
 
@@ -45,6 +50,7 @@ struct AngleBadgeView: View {
             )
         }
         .allowsHitTesting(false)
+        } // end if showAngles
     }
 
     private func drawAngleArc(

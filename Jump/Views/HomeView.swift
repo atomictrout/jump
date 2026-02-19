@@ -1,29 +1,11 @@
-import Foundation
 import SwiftUI
+import SwiftData
 
 struct HomeView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Query(sort: \JumpSession.createdAt, order: .reverse) private var sessions: [JumpSession]
     @State private var showVideoImport = false
     @State private var selectedSession: JumpSession?
-    @State private var showSettings = false
-    @State private var poseEngineSelection: PoseEngineSetting = {
-        if let stored = UserDefaults.standard.string(forKey: "poseEngine"),
-           let setting = PoseEngineSetting(rawValue: stored) {
-            return setting
-        } else {
-            return .vision
-        }
-    }()
-
-    enum PoseEngineSetting: String, CaseIterable, Identifiable {
-        case vision, blazePose
-        var id: String { rawValue }
-        var label: String {
-            switch self {
-            case .vision: return "Apple Vision"
-            case .blazePose: return "MediaPipe BlazePose"
-            }
-        }
-    }
 
     var body: some View {
         ZStack {
@@ -35,132 +17,213 @@ struct HomeView: View {
             )
             .ignoresSafeArea()
 
-            VStack(spacing: 40) {
-                Spacer()
-
-                // App logo / title
-                VStack(spacing: 16) {
-                    Image("HighJumpIcon")
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 120, height: 120)
-                        .clipShape(RoundedRectangle(cornerRadius: 24))
-                        .shadow(color: .jumpAccent.opacity(0.3), radius: 16)
-
-                    Text("Jump")
-                        .font(.system(size: 44, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
-
-                    HStack {
-                        Text("High Jump Analysis")
-                            .font(.title3)
-                            .foregroundStyle(.jumpSubtle)
-                        Spacer()
-                    }
-                    .padding(.top, 8)
-                    .padding(.horizontal)
-                }
-
-                Spacer()
-
-                // Action buttons
-                VStack(spacing: 16) {
-                    Button {
-                        showVideoImport = true
-                    } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: "plus.circle.fill")
-                                .font(.title2)
-                            Text("New Analysis")
-                                .font(.headline)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 18)
-                        .background(
-                            LinearGradient(
-                                colors: [.jumpAccent, .jumpAccent.opacity(0.8)],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                        .foregroundStyle(.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 16))
-                    }
-
-                    // Camera positioning tip
-                    HStack(spacing: 8) {
-                        Image(systemName: "camera.viewfinder")
-                            .foregroundStyle(.jumpSecondary)
-                        Text("Best results: film from the side, 15-20m away, at hip height")
-                            .font(.caption)
-                            .foregroundStyle(.jumpSubtle)
-                    }
-                    .padding(.horizontal)
-                }
-                .padding(.horizontal, 24)
-
-                Spacer()
-                    .frame(height: 40)
+            if sessions.isEmpty {
+                emptyState
+            } else {
+                sessionList
             }
         }
-        .overlay(alignment: .topTrailing) {
-            Button {
-                showSettings = true
-            } label: {
-                Image(systemName: "gearshape")
-                    .foregroundStyle(.jumpSubtle)
-                    .font(.title2)
-                    .accessibilityLabel("Settings")
-                    .padding(.top, UIApplication.shared.windows.first?.safeAreaInsets.top ?? 16)
-                    .padding(.trailing, 16)
+        .navigationTitle("Jump")
+        .navigationBarTitleDisplayMode(.large)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                NavigationLink {
+                    SettingsView()
+                } label: {
+                    Image(systemName: "gearshape.fill")
+                        .foregroundStyle(.jumpSubtle)
+                }
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    showVideoImport = true
+                } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(.jumpAccent)
+                }
+                .accessibilityLabel("New Analysis")
             }
         }
-        .navigationBarHidden(true)
         .fullScreenCover(isPresented: $showVideoImport) {
             VideoImportView { session in
+                modelContext.insert(session)
                 selectedSession = session
             }
         }
         .navigationDestination(item: $selectedSession) { session in
             VideoAnalysisView(session: session)
         }
-        .sheet(isPresented: $showSettings) {
-            settingsSheet
-        }
-        .onAppear {
-            PoseDetectionService.poseEngine = poseEngineSelection == .blazePose ? .blazePose : .vision
+    }
+
+    // MARK: - Empty State
+
+    private var emptyState: some View {
+        VStack(spacing: 32) {
+            Spacer()
+
+            VStack(spacing: 16) {
+                Image("HighJumpIcon")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 120, height: 120)
+                    .clipShape(RoundedRectangle(cornerRadius: 24))
+                    .shadow(color: .jumpAccent.opacity(0.3), radius: 16)
+
+                Text("Jump")
+                    .font(.system(size: 44, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+
+                Text("High Jump Analysis")
+                    .font(.title3)
+                    .foregroundStyle(.jumpSubtle)
+            }
+
+            Spacer()
+
+            VStack(spacing: 16) {
+                Button {
+                    showVideoImport = true
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.title2)
+                        Text("New Analysis")
+                            .font(.headline)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 18)
+                    .background(
+                        LinearGradient(
+                            colors: [.jumpAccent, .jumpAccent.opacity(0.8)],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .foregroundStyle(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                }
+
+                HStack(spacing: 8) {
+                    Image(systemName: "camera.viewfinder")
+                        .foregroundStyle(.jumpSecondary)
+                    Text("Best results: film from the side, 15-20m away, at hip height")
+                        .font(.caption)
+                        .foregroundStyle(.jumpSubtle)
+                }
+            }
+            .padding(.horizontal, 24)
+
+            Spacer()
+                .frame(height: 40)
         }
     }
 
-    private var settingsSheet: some View {
-        NavigationStack {
-            Form {
-                Section("Pose Engine") {
-                    Picker("Select Pose Engine", selection: $poseEngineSelection) {
-                        ForEach(PoseEngineSetting.allCases) { setting in
-                            Text(setting.label).tag(setting)
-                        }
+    // MARK: - Session List
+
+    private var sessionList: some View {
+        List {
+            ForEach(sessions) { session in
+                SessionCardView(session: session)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        selectedSession = session
                     }
-                    .pickerStyle(.inline)
-                    .onChange(of: poseEngineSelection) { newValue in
-                        PoseDetectionService.poseEngine = newValue == .blazePose ? .blazePose : .vision
-                        UserDefaults.standard.set(newValue.rawValue, forKey: "poseEngine")
-                    }
-                }
             }
-            .navigationTitle("Settings")
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") {
-                        showSettings = false
-                    }
+            .onDelete { indexSet in
+                for index in indexSet {
+                    deleteSession(sessions[index])
                 }
             }
         }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+    }
+
+    private func deleteSession(_ session: JumpSession) {
+        // Clean up the video file
+        if let url = session.videoURL {
+            try? FileManager.default.removeItem(at: url)
+        }
+        modelContext.delete(session)
     }
 }
 
-// Make JumpSession conform to Hashable for navigation
+// MARK: - Session Card
+
+struct SessionCardView: View {
+    let session: JumpSession
+
+    var body: some View {
+        HStack(spacing: 16) {
+            // Status icon
+            ZStack {
+                Circle()
+                    .fill(statusColor.opacity(0.2))
+                    .frame(width: 48, height: 48)
+                Image(systemName: statusIcon)
+                    .font(.title3)
+                    .foregroundStyle(statusColor)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                if let height = session.barHeightMeters {
+                    Text(String(format: "%.2fm", height))
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                } else {
+                    Text("In Progress")
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                }
+
+                Text(session.summaryText)
+                    .font(.caption)
+                    .foregroundStyle(.jumpSubtle)
+                    .lineLimit(1)
+
+                Text(session.createdAt, style: .relative)
+                    .font(.caption2)
+                    .foregroundStyle(.jumpSubtle.opacity(0.7))
+            }
+
+            Spacer()
+
+            if let cleared = session.jumpCleared {
+                Image(systemName: cleared ? "checkmark.circle.fill" : "xmark.circle.fill")
+                    .font(.title2)
+                    .foregroundStyle(cleared ? .green : .red)
+            } else {
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundStyle(.jumpSubtle)
+            }
+        }
+        .padding()
+        .background(Color.jumpCard)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    private var statusColor: Color {
+        if session.analysisComplete { return .green }
+        if session.barMarkingComplete { return .jumpSecondary }
+        if session.personSelectionComplete { return .jumpAccent }
+        return .jumpSubtle
+    }
+
+    private var statusIcon: String {
+        if session.analysisComplete { return "checkmark.circle.fill" }
+        if session.barMarkingComplete { return "ruler" }
+        if session.personSelectionComplete { return "person.crop.circle" }
+        return "film"
+    }
+}
+
+// MARK: - JumpSession Hashable (for navigationDestination)
+
 extension JumpSession: Hashable {
     static func == (lhs: JumpSession, rhs: JumpSession) -> Bool {
         lhs.id == rhs.id
@@ -168,11 +231,5 @@ extension JumpSession: Hashable {
 
     func hash(into hasher: inout Hasher) {
         hasher.combine(id)
-    }
-}
-
-#Preview {
-    NavigationStack {
-        HomeView()
     }
 }
